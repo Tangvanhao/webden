@@ -721,8 +721,8 @@
       </section>
 
       <section class="sub-board">
-        <div class="sub-card" data-bet="chan"><div class="sub-title">CHẴN</div><div class="sub-odd">Tổng chẵn (1:1)</div><div class="sub-amt" id="amt-chan">Cược: 0</div></div>
-        <div class="sub-card" data-bet="le"><div class="sub-title">LẺ</div><div class="sub-odd">Tổng lẻ (1:1)</div><div class="sub-amt" id="amt-le">Cược: 0</div></div>
+        <div class="sub-card" data-bet="chan"><div class="sub-title">CHẴN</div><div class="sub-odd">Tổng chẵn, trừ Bão (1:1)</div><div class="sub-amt" id="amt-chan">Cược: 0</div></div>
+        <div class="sub-card" data-bet="le"><div class="sub-title">LẺ</div><div class="sub-odd">Tổng lẻ, trừ Bão (1:1)</div><div class="sub-amt" id="amt-le">Cược: 0</div></div>
         <div class="sub-card" data-bet="bao"><div class="sub-title">BÃO (BỘ BA)</div><div class="sub-odd">3 mặt giống nhau (1:24)</div><div class="sub-amt" id="amt-bao">Cược: 0</div></div>
       </section>
 
@@ -740,7 +740,6 @@
           <button class="chip" data-val="allin" style="border-color:rgba(239,68,68,0.55);color:#fca5a5;">ALL IN</button>
         </div>
         <div class="actions">
-          <button class="btn" id="clear-btn">Xóa cược</button>
           <button class="btn btn-gold" id="roll-btn">Lắc Xí Ngầu</button>
         </div>
       </section>
@@ -1350,28 +1349,15 @@
       };
     });
 
-    document.getElementById("clear-btn").onclick = () => {
-      if (phase !== "betting") return;
-      const refund = Object.values(bets).reduce((a, b) => a + b, 0);
-      if (refund > 0) {
-        if (currentUser) currentUser.balance += refund;
-        else { guestBalance += refund; localStorage.setItem("tx_balance", String(guestBalance)); }
-        reservedInRound = Math.max(0, reservedInRound - refund);
-        renderHeaderAndStats();
-      }
-      bets = { tai: 0, xiu: 0, chan: 0, le: 0, bao: 0 };
-      syncTaiXiuBets();
-    };
-
     const bowlLid = document.getElementById("bowl-lid");
     const bowlArea = document.getElementById("bowl-area");
     const rollBtn = document.getElementById("roll-btn");
 
-    rollBtn.onclick = () => {
+    function startTaiXiuShake(allowEmpty = false) {
       if (phase === "covered") { openBowl(); return; }
       if (phase !== "betting") return;
       const total = Object.values(bets).reduce((a, b) => a + b, 0);
-      if (total === 0) { document.getElementById("status-banner").textContent = "Hãy đặt ít nhất 1 cửa!"; return; }
+      if (!allowEmpty && total === 0) { document.getElementById("status-banner").textContent = "Hãy đặt ít nhất 1 cửa!"; return; }
       document.querySelectorAll("[data-bet]").forEach((el) => el.classList.remove("win"));
       document.getElementById("result-readout").textContent = "";
       phase = "shaking";
@@ -1390,9 +1376,10 @@
         bowlLid.style.transform = "";
         rollBtn.disabled = false;
         rollBtn.textContent = "Mở Bát";
-        document.getElementById("status-banner").textContent = "Kéo nắp bát để nặn hoặc nhấn 'Mở Bát'";
+        document.getElementById("status-banner").textContent = "Kéo nắp bát để nặn (tự mở khi hết 5s)!";
       }, 900);
-    };
+    }
+    rollBtn.onclick = () => startTaiXiuShake(false);
 
     function openBowl() {
       if (phase !== "covered") return;
@@ -1413,8 +1400,8 @@
       const winners = [];
       if (isTai) { payout += bets.tai * 2; winners.push("tai"); }
       if (isXiu) { payout += bets.xiu * 2; winners.push("xiu"); }
-      if (isEven) { payout += bets.chan * 2; winners.push("chan"); }
-      else { payout += bets.le * 2; winners.push("le"); }
+      if (!isTriple && isEven) { payout += bets.chan * 2; winners.push("chan"); }
+      if (!isTriple && !isEven) { payout += bets.le * 2; winners.push("le"); }
       if (isTriple) { payout += bets.bao * 25; winners.push("bao"); }
       winners.forEach((k) => document.querySelector(`[data-bet="${k}"]`).classList.add("win"));
 
@@ -1546,10 +1533,16 @@
       }
     }
 
-    function triggerGameAuto(g) {
-      if (g === "taixiu" && phase === "betting" && Object.values(bets).some((v) => v > 0)) rollBtn.click();
-      else if (g === "xocdia") { const b = document.getElementById("xd-roll"); if (b && !b.disabled) b.click(); }
-      else if (g === "baucua") { const b = document.getElementById("bc-roll"); if (b && !b.disabled) b.click(); }
+    window.GameHub.autoHandlers = {};
+
+    function triggerGameAuto(g, eventType) {
+      if (g === "taixiu") {
+        if (eventType === "roll" && phase === "betting") startTaiXiuShake(true);
+        if (eventType === "reveal" && phase === "covered") openBowl();
+        return;
+      }
+      const h = window.GameHub.autoHandlers[g];
+      if (h && typeof h[eventType] === "function") h[eventType]();
     }
 
     setInterval(() => {
@@ -1558,10 +1551,11 @@
         s.sec -= 1;
         if (s.sec <= 0) {
           if (s.phase === "betting") {
-            triggerGameAuto(g);
+            triggerGameAuto(g, "roll");
             s.phase = "cooldown";
-            s.sec = 5;
+            s.sec = 6;
           } else {
+            triggerGameAuto(g, "reveal");
             s.phase = "betting";
             s.sec = 30;
             s.id += 1;

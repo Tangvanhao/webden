@@ -72,10 +72,10 @@
     const bacVal = (c) => (c.rank === "A" ? 1 : ["10", "J", "Q", "K"].includes(c.rank) ? 0 : Number(c.rank));
     const handScore = (cards) => cards.reduce((s, c) => s + bacVal(c), 0) % 10;
 
-    document.getElementById("bac-deal-btn").onclick = () => {
+    function runBaccarat(allowEmpty = false) {
       if (busy) return;
-      const wager = betAmt === "allin" ? Hub.getBalance() : betAmt;
-      if (wager <= 0 || !Hub.spend(wager)) { document.getElementById("bac-status").textContent = "Không đủ xu!"; return; }
+      const wager = allowEmpty ? 0 : (betAmt === "allin" ? Hub.getBalance() : betAmt);
+      if (!allowEmpty && (wager <= 0 || !Hub.spend(wager))) { document.getElementById("bac-status").textContent = "Không đủ xu!"; return; }
       busy = true;
       const deck = createDeck();
       const pCards = [deck.pop(), deck.pop()], bCards = [deck.pop(), deck.pop()];
@@ -126,6 +126,11 @@
         settleBac();
       };
       Hub.attachPeek(root, settleBac);
+    }
+    document.getElementById("bac-deal-btn").onclick = () => runBaccarat(false);
+    Hub.autoHandlers.baccarat = {
+      roll: () => runBaccarat(true),
+      reveal: () => { const b = document.getElementById("bac-reveal-btn"); if (b && b.style.display !== "none") b.click(); },
     };
   }
 
@@ -282,7 +287,7 @@
       <section class="bc-grid">${FACES.map((f) => `<div class="sub-card" data-bc="${f.id}"><div style="font-size:28px">${f.icon}</div><div class="sub-title">${f.name}</div><div class="sub-amt" id="bc-amt-${f.id}">Cược: 0</div></div>`).join("")}</section>
       <section class="controls">
         <div class="chips">${chipButtonsHtml("data-bcval")}</div>
-        <div class="actions"><button class="btn" id="bc-clear">Xóa cược</button><button class="btn btn-gold" id="bc-roll">Lắc Bầu Cua</button></div>
+        <div class="actions"><button class="btn btn-gold" id="bc-roll">Lắc Bầu Cua</button></div>
       </section>`;
 
     const lid = document.getElementById("bc-lid"), bowl = document.getElementById("bc-bowl"), rollBtn = document.getElementById("bc-roll");
@@ -294,7 +299,6 @@
       if (amt <= 0 || !Hub.spend(amt)) return;
       bcBets[c.dataset.bc] += amt; Hub.playBeep(740, 0.04); syncBC();
     }));
-    document.getElementById("bc-clear").onclick = () => { if (phase !== "betting") return; Hub.win(Object.values(bcBets).reduce((a, b) => a + b, 0)); bcBets = {nai:0,bau:0,ga:0,ca:0,cua:0,tom:0}; syncBC(); };
 
     function openBC() {
       if (phase !== "covered") return;
@@ -312,11 +316,11 @@
       bcBets = {nai:0,bau:0,ga:0,ca:0,cua:0,tom:0}; syncBC();
     }
 
-    rollBtn.onclick = () => {
+    function runBC(allowEmpty = false) {
       if (phase === "covered") { openBC(); return; }
       if (phase !== "betting") return;
       const total = Object.values(bcBets).reduce((a, b) => a + b, 0);
-      if (total === 0) return;
+      if (!allowEmpty && total === 0) return;
       phase = "shaking"; rollBtn.disabled = true; lid.classList.remove("open"); bowl.classList.add("shaking");
       document.querySelectorAll("#bc-dice .bc-die").forEach((d) => d.classList.add("spinning"));
       document.getElementById("bc-status").textContent = "Đang lắc Bầu Cua...";
@@ -325,9 +329,12 @@
         bowl.classList.remove("shaking");
         document.getElementById("bc-dice").innerHTML = pendingRes.map((f) => `<div class="bc-die">${f.icon}</div>`).join("");
         phase = "covered"; lid.style.transform = ""; rollBtn.disabled = false; rollBtn.textContent = "Mở Bát";
-        document.getElementById("bc-status").textContent = "Kéo nắp bát để nặn hoặc nhấn Mở Bát!";
+        document.getElementById("bc-status").textContent = "Kéo nắp bát để nặn (tự mở khi hết giờ)!";
       }, 900);
-    };
+    }
+
+    rollBtn.onclick = () => runBC(false);
+    Hub.autoHandlers.baucua = { roll: () => runBC(true), reveal: openBC };
 
     let drag = null;
     lid.addEventListener("pointerdown", (e) => { if (phase !== "covered") return; drag = { x: e.clientX, y: e.clientY }; lid.classList.add("dragging"); lid.setPointerCapture(e.pointerId); });
@@ -358,10 +365,10 @@
 
     root.querySelectorAll("[data-wh]").forEach((el) => (el.onclick = () => { if (spinning) return; root.querySelectorAll("[data-wh]").forEach((x) => x.classList.remove("active")); el.classList.add("active"); pick = el.dataset.wh; }));
     root.querySelectorAll("[data-wval]").forEach((btn) => (btn.onclick = () => { root.querySelectorAll("[data-wval]").forEach((b) => b.classList.remove("selected")); btn.classList.add("selected"); betAmt = btn.dataset.wval === "allin" ? "allin" : Number(btn.dataset.wval); }));
-    document.getElementById("wh-spin").onclick = () => {
+    function runWheel(allowEmpty = false) {
       if (spinning) return;
-      const wager = betAmt === "allin" ? Hub.getBalance() : betAmt;
-      if (wager <= 0 || !Hub.spend(wager)) { document.getElementById("wh-status").textContent = "Không đủ xu!"; return; }
+      const wager = allowEmpty ? 0 : (betAmt === "allin" ? Hub.getBalance() : betAmt);
+      if (!allowEmpty && (wager <= 0 || !Hub.spend(wager))) { document.getElementById("wh-status").textContent = "Không đủ xu!"; return; }
       spinning = true;
       const slot = Math.floor(Math.random() * 15), outcome = slot === 0 ? "green" : slot % 2 === 1 ? "red" : "black";
       const segAngle = 360 / 15;
@@ -377,7 +384,9 @@
         document.getElementById("wh-result").innerHTML = `Về ô: <strong>${outcome.toUpperCase()}</strong> · ${net >= 0 ? `<span style="color:var(--green)">+${Hub.fmt(net)} xu</span>` : `<span style="color:var(--tai)">${Hub.fmt(net)} xu</span>`}`;
         Hub.playBeep(net > 0 ? 920 : 250, 0.14);
       }, 1850);
-    };
+    }
+    document.getElementById("wh-spin").onclick = () => runWheel(false);
+    Hub.autoHandlers.wheel = { roll: () => runWheel(true) };
   }
 
   /* 6. XÓC ĐĨA (4 ĐỒNG XU + NẶN BÁT) */
@@ -410,7 +419,7 @@
       </section>
       <section class="controls">
         <div class="chips">${chipButtonsHtml("data-xval")}</div>
-        <div class="actions"><button class="btn" id="xd-clear">Xóa cược</button><button class="btn btn-gold" id="xd-roll">Xóc Đĩa</button></div>
+        <div class="actions"><button class="btn btn-gold" id="xd-roll">Xóc Đĩa</button></div>
       </section>`;
 
     const lid = document.getElementById("xd-lid"), bowl = document.getElementById("xd-bowl"), rollBtn = document.getElementById("xd-roll");
@@ -433,11 +442,21 @@
       if (amt <= 0 || !Hub.spend(amt)) return;
       xdBets[k] += amt; Hub.playBeep(740, 0.04); syncXD();
     }));
-    document.getElementById("xd-clear").onclick = () => {
+
+    function runXD(allowEmpty = false) {
+      if (phase === "covered") { openXD(); return; }
       if (phase !== "betting") return;
-      Hub.win(Object.values(xdBets).reduce((a, b) => a + b, 0));
-      xdBets = { chan: 0, le: 0, red4: 0, white4: 0, red3: 0, white3: 0 }; syncXD();
-    };
+      const total = Object.values(xdBets).reduce((a, b) => a + b, 0);
+      if (!allowEmpty && total === 0) { document.getElementById("xd-status").textContent = "Hãy đặt ít nhất 1 cửa!"; return; }
+      phase = "shaking"; rollBtn.disabled = true; lid.classList.remove("open"); bowl.classList.add("shaking");
+      pendingCoins = [0, 1, 2, 3].map(() => (Math.random() < 0.5 ? 0 : 1));
+      setTimeout(() => {
+        bowl.classList.remove("shaking");
+        document.getElementById("xd-coins").innerHTML = pendingCoins.map((c) => `<div class="xd-coin ${c ? "red" : "white"}"></div>`).join("");
+        phase = "covered"; lid.style.transform = ""; rollBtn.disabled = false; rollBtn.textContent = "Mở Bát";
+        document.getElementById("xd-status").textContent = "Kéo nắp bát để nặn (tự mở khi hết giờ)!";
+      }, 850);
+    }
 
     function openXD() {
       if (phase !== "covered") return;
@@ -461,20 +480,8 @@
       xdBets = { chan: 0, le: 0, red4: 0, white4: 0, red3: 0, white3: 0 }; syncXD();
     }
 
-    rollBtn.onclick = () => {
-      if (phase === "covered") { openXD(); return; }
-      if (phase !== "betting") return;
-      const total = Object.values(xdBets).reduce((a, b) => a + b, 0);
-      if (total === 0) { document.getElementById("xd-status").textContent = "Hãy đặt ít nhất 1 cửa!"; return; }
-      phase = "shaking"; rollBtn.disabled = true; lid.classList.remove("open"); bowl.classList.add("shaking");
-      pendingCoins = [0, 1, 2, 3].map(() => (Math.random() < 0.5 ? 0 : 1));
-      setTimeout(() => {
-        bowl.classList.remove("shaking");
-        document.getElementById("xd-coins").innerHTML = pendingCoins.map((c) => `<div class="xd-coin ${c ? "red" : "white"}"></div>`).join("");
-        phase = "covered"; lid.style.transform = ""; rollBtn.disabled = false; rollBtn.textContent = "Mở Bát";
-        document.getElementById("xd-status").textContent = "Kéo nắp bát để nặn hoặc nhấn Mở Bát!";
-      }, 850);
-    };
+    rollBtn.onclick = () => runXD(false);
+    Hub.autoHandlers.xocdia = { roll: () => runXD(true), reveal: openXD };
 
     let drag = null;
     lid.addEventListener("pointerdown", (e) => { if (phase !== "covered") return; drag = { x: e.clientX, y: e.clientY }; lid.classList.add("dragging"); lid.setPointerCapture(e.pointerId); });
@@ -510,9 +517,9 @@
     root.querySelectorAll("[data-rhv]").forEach((b) => (b.onclick = () => { root.querySelectorAll("[data-rhv]").forEach((x) => x.classList.remove("selected")); b.classList.add("selected"); betAmt = b.dataset.rhv === "allin" ? "allin" : Number(b.dataset.rhv); }));
     const val = (r) => (r === "A" ? 1 : r === "J" ? 11 : r === "Q" ? 12 : r === "K" ? 13 : Number(r));
 
-    document.getElementById("rh-deal").onclick = () => {
-      const wager = betAmt === "allin" ? Hub.getBalance() : betAmt;
-      if (wager <= 0 || !Hub.spend(wager)) { document.getElementById("rh-status").textContent = "Không đủ xu!"; return; }
+    function runRongHo(allowEmpty = false) {
+      const wager = allowEmpty ? 0 : (betAmt === "allin" ? Hub.getBalance() : betAmt);
+      if (!allowEmpty && (wager <= 0 || !Hub.spend(wager))) { document.getElementById("rh-status").textContent = "Không đủ xu!"; return; }
       const deck = createDeck(), cR = deck.pop(), cH = deck.pop();
       document.getElementById("rh-r").innerHTML = cardHtml(cR, true);
       document.getElementById("rh-h").innerHTML = cardHtml(cH, true);
@@ -536,6 +543,11 @@
       };
       revBtn.onclick = () => { root.querySelectorAll(".peek-cover").forEach((c) => c.classList.add("revealed")); settleRH(); };
       Hub.attachPeek(root, settleRH);
+    }
+    document.getElementById("rh-deal").onclick = () => runRongHo(false);
+    Hub.autoHandlers.rongho = {
+      roll: () => runRongHo(true),
+      reveal: () => { const b = document.getElementById("rh-reveal"); if (b && b.style.display !== "none") b.click(); },
     };
   }
 
@@ -556,6 +568,7 @@
         <div class="chips">${chipButtonsHtml("data-bjv")}</div>
         <div class="actions">
           <button class="btn" id="bj-hit" disabled>Rút Bài</button>
+          <button class="btn" id="bj-double" disabled>Nhân Đôi (x2)</button>
           <button class="btn" id="bj-stand" disabled>Dằn (Dừng)</button>
           <button class="btn btn-gold" id="bj-deal">Chia Bài</button>
         </div>
@@ -582,16 +595,20 @@
     function finishBJ() {
       phase = "idle";
       document.getElementById("bj-hit").disabled = true;
+      document.getElementById("bj-double").disabled = true;
       document.getElementById("bj-stand").disabled = true;
       document.getElementById("bj-deal").disabled = false;
-      while (score(dHand) < 17) dHand.push(deck.pop());
-      document.getElementById("bj-p-cards").innerHTML = pHand.map((c) => cardHtml(c, false)).join("");
+      const ps = score(pHand);
+      if (ps <= 21) {
+        while (score(dHand) < 17) dHand.push(deck.pop());
+      }
+      document.getElementById("bj-p-cards").innerHTML = pHand.map((c, idx) => cardHtml(c, idx === pHand.length - 1)).join("");
       document.getElementById("bj-d-cards").innerHTML = dHand.map((c, idx) => cardHtml(c, idx > 0)).join("");
       document.getElementById("bj-d-score").textContent = "?";
-      document.getElementById("bj-status").textContent = "Kéo lá úp của Nhà Cái để nặn bài!";
-      Hub.attachPeek(document.getElementById("bj-d-cards"), () => {
+      document.getElementById("bj-status").textContent = "Kéo bài cả 2 bên để nặn!";
+      Hub.attachPeek(root, () => {
         renderBJ(true);
-        const ps = score(pHand), ds = score(dHand);
+        const ds = score(dHand);
         let payout = 0, msg = "Thua";
         if (ps <= 21) {
           if (ps === 21 && pHand.length === 2 && !(ds === 21 && dHand.length === 2)) { payout = Math.floor(wager * 2.5); msg = "XÌ DÁCH!"; }
@@ -612,11 +629,27 @@
       if (w <= 0 || !Hub.spend(w)) { document.getElementById("bj-status").textContent = "Không đủ xu!"; return; }
       wager = w; deck = createDeck(); pHand = [deck.pop(), deck.pop()]; dHand = [deck.pop(), deck.pop()];
       phase = "playing"; document.getElementById("bj-result").textContent = "";
-      document.getElementById("bj-hit").disabled = false; document.getElementById("bj-stand").disabled = false; document.getElementById("bj-deal").disabled = true;
+      document.getElementById("bj-hit").disabled = false;
+      document.getElementById("bj-double").disabled = false;
+      document.getElementById("bj-stand").disabled = false;
+      document.getElementById("bj-deal").disabled = true;
       renderBJ(false);
       if (score(pHand) === 21) finishBJ();
     };
-    document.getElementById("bj-hit").onclick = () => { if (phase !== "playing") return; pHand.push(deck.pop()); renderBJ(false); if (score(pHand) >= 21) finishBJ(); };
+    document.getElementById("bj-hit").onclick = () => {
+      if (phase !== "playing") return;
+      document.getElementById("bj-double").disabled = true;
+      pHand.push(deck.pop());
+      renderBJ(false);
+      if (score(pHand) >= 21) finishBJ();
+    };
+    document.getElementById("bj-double").onclick = () => {
+      if (phase !== "playing" || pHand.length !== 2) return;
+      if (!Hub.spend(wager)) { document.getElementById("bj-status").textContent = "Không đủ xu để Nhân Đôi!"; return; }
+      wager *= 2;
+      pHand.push(deck.pop());
+      finishBJ();
+    };
     document.getElementById("bj-stand").onclick = () => { if (phase === "playing") finishBJ(); };
   }
 
@@ -706,14 +739,14 @@
       <section class="stage">
         <div class="status-banner" id="cr-status">Dùng nút điều khiển (hoặc phím mũi tên/WASD) ăn số X, né 💣 và hạ cánh lên thuyền!</div>
         <div class="av-canvas-wrap">
-          <canvas id="cr-canvas" width="840" height="270"></canvas>
+          <canvas id="cr-canvas" width="840" height="270" style="touch-action:none;"></canvas>
           <div class="av-mult" id="cr-mult" style="font-size:26px;">1.00x</div>
         </div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;align-items:center;">
-          <button type="button" class="btn" id="cr-left" style="min-width:86px;touch-action:none;">⬅️ Chậm</button>
-          <button type="button" class="btn btn-gold" id="cr-up" style="min-width:96px;touch-action:none;">⬆️ Bay Lên</button>
-          <button type="button" class="btn btn-gold" id="cr-down" style="min-width:96px;touch-action:none;">⬇️ Hạ Xuống</button>
-          <button type="button" class="btn" id="cr-right" style="min-width:86px;touch-action:none;">➡️ Nhanh</button>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;width:100%;max-width:460px;">
+          <button type="button" class="btn" id="cr-left" style="padding:14px 6px;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;">⬅️ Chậm</button>
+          <button type="button" class="btn btn-gold" id="cr-up" style="padding:14px 6px;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;">⬆️ Bay Lên</button>
+          <button type="button" class="btn btn-gold" id="cr-down" style="padding:14px 6px;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;">⬇️ Hạ Xuống</button>
+          <button type="button" class="btn" id="cr-right" style="padding:14px 6px;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;">➡️ Nhanh</button>
         </div>
         <div class="result-readout" id="cr-result"></div>
       </section>
@@ -740,8 +773,33 @@
       el.addEventListener("pointerup", off);
       el.addEventListener("pointerleave", off);
       el.addEventListener("pointercancel", off);
+      el.addEventListener("contextmenu", (e) => e.preventDefault());
     }
     bindHold("cr-up", "up"); bindHold("cr-down", "down"); bindHold("cr-left", "left"); bindHold("cr-right", "right");
+
+    // Touch/drag directly on canvas for smooth mobile steering
+    let touchSteer = null;
+    canvas.addEventListener("pointerdown", (e) => {
+      if (!active) return;
+      e.preventDefault();
+      touchSteer = { y: e.clientY, x: e.clientX };
+      canvas.setPointerCapture(e.pointerId);
+    });
+    canvas.addEventListener("pointermove", (e) => {
+      if (!active || !touchSteer) return;
+      const dy = e.clientY - touchSteer.y;
+      const dx = e.clientX - touchSteer.x;
+      keys.up = dy < -10;
+      keys.down = dy > 10;
+      keys.left = dx < -18;
+      keys.right = dx > 18;
+    });
+    const endTouchSteer = () => {
+      touchSteer = null;
+      keys.up = keys.down = keys.left = keys.right = false;
+    };
+    canvas.addEventListener("pointerup", endTouchSteer);
+    canvas.addEventListener("pointercancel", endTouchSteer);
 
     window.addEventListener("keydown", (e) => {
       if (!active) return;
