@@ -580,6 +580,45 @@
       padding: 8px 12px; border-radius: 10px; font-size: 13px;
     }
 
+    .dice.spinning, .bc-die.spinning {
+      animation: diceTumble 0.45s linear infinite;
+    }
+    @keyframes diceTumble {
+      0% { transform: rotate(0deg) scale(1); }
+      25% { transform: rotate(90deg) scale(1.08); }
+      50% { transform: rotate(180deg) scale(0.95); }
+      75% { transform: rotate(270deg) scale(1.08); }
+      100% { transform: rotate(360deg) scale(1); }
+    }
+
+    /* Card Peek ("Nặn bài") */
+    .peek-wrap {
+      position: relative;
+      display: inline-block;
+      overflow: hidden;
+      border-radius: 9px;
+    }
+    .peek-cover {
+      position: absolute;
+      inset: 0;
+      border-radius: 9px;
+      background: repeating-linear-gradient(45deg, #1e3a8a, #1e3a8a 6px, #172554 6px, #172554 12px);
+      border: 2px solid var(--gold);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--gold);
+      font-size: 10px;
+      font-weight: 800;
+      cursor: grab;
+      touch-action: none;
+      user-select: none;
+      transition: transform 0.25s ease, opacity 0.25s ease;
+      z-index: 3;
+    }
+    .peek-cover.dragging { transition: none; cursor: grabbing; }
+    .peek-cover.revealed { transform: translateY(-115%); opacity: 0; pointer-events: none; }
+
     @media (max-width: 600px) {
       .board, .sub-board, .bac-table { grid-template-columns: 1fr; }
       .bc-grid { grid-template-columns: repeat(2, 1fr); }
@@ -636,18 +675,23 @@
       <button class="game-tab" data-view="mines">💎 Đào Mìn</button>
       <button class="game-tab" data-view="baucua">🦀 Bầu Cua</button>
       <button class="game-tab" data-view="wheel">🎡 Vòng Quay</button>
+      <button class="game-tab" data-view="carrier">🛩️ Hạ Cánh</button>
     </nav>
+
+    <!-- UNIVERSAL 30S SESSION COUNTDOWN FOR EACH GAME -->
+    <section class="glass" style="padding:11px 16px;display:flex;flex-direction:column;gap:8px;">
+      <div class="tx-session-bar">
+        <span><strong style="color:var(--gold);" id="session-game-label">Tài Xỉu</strong> · Phiên #<span id="session-id">1042</span></span>
+        <span class="timer-badge" id="auto-timer">⏱ Nhận cược: 30s</span>
+      </div>
+      <div style="width:100%;height:5px;background:var(--panel-2);border-radius:999px;overflow:hidden;">
+        <div id="session-progress" style="width:100%;height:100%;background:linear-gradient(90deg,var(--green),var(--gold));transition:width 0.9s linear;"></div>
+      </div>
+    </section>
 
     <!-- TÀI XỈU -->
     <div id="view-taixiu" class="game-view active">
       <section class="stage">
-        <div class="tx-session-bar">
-          <span style="color:var(--muted);font-weight:700;">Phiên #<span id="session-id">1042</span></span>
-          <div style="display:flex;gap:8px;align-items:center;">
-            <span class="timer-badge" id="auto-timer" style="display:none;">⏱ 15s</span>
-            <button class="btn" id="auto-mode-btn" style="padding:4px 10px;font-size:12px;">⏱ Phiên tự động: Tắt</button>
-          </div>
-        </div>
         <div class="status-banner" id="status-banner">Chọn mức chip và đặt cược, sau đó nhấn Lắc Xí Ngầu</div>
         <div class="bowl-area" id="bowl-area">
           <div class="dice" id="dice-0"></div>
@@ -689,6 +733,10 @@
           <button class="chip" data-val="10000">10K</button>
           <button class="chip" data-val="50000">50K</button>
           <button class="chip" data-val="100000">100K</button>
+          <button class="chip" data-val="500000">500K</button>
+          <button class="chip" data-val="1000000">1M</button>
+          <button class="chip" data-val="5000000">5M</button>
+          <button class="chip" data-val="10000000">10M</button>
           <button class="chip" data-val="allin" style="border-color:rgba(239,68,68,0.55);color:#fca5a5;">ALL IN</button>
         </div>
         <div class="actions">
@@ -707,6 +755,7 @@
     <div id="view-rongho" class="game-view"></div>
     <div id="view-blackjack" class="game-view"></div>
     <div id="view-mines" class="game-view"></div>
+    <div id="view-carrier" class="game-view"></div>
 
     <!-- UNIVERSAL SOI CẦU + BÌNH LUẬN CHO TẤT CẢ TRÒ CHƠI -->
     <section class="history-panel glass">
@@ -797,10 +846,12 @@
         <button class="btn" id="tab-rut">Rút Xu</button>
       </div>
       <div class="chips">
-        <button type="button" class="chip" data-txamt="50000">50K</button>
         <button type="button" class="chip" data-txamt="100000">100K</button>
         <button type="button" class="chip" data-txamt="500000">500K</button>
         <button type="button" class="chip" data-txamt="1000000">1M</button>
+        <button type="button" class="chip" data-txamt="5000000">5M</button>
+        <button type="button" class="chip" data-txamt="10000000">10M</button>
+        <button type="button" class="chip" data-txamt="50000000">50M</button>
       </div>
       <form id="wallet-form" style="display:flex;flex-direction:column;gap:10px;">
         <div class="field">
@@ -839,6 +890,7 @@
       mines: "Đào Mìn",
       baucua: "Bầu Cua",
       wheel: "Vòng Quay",
+      carrier: "Hạ Cánh Tàu Sân Bay",
     };
 
     let token = localStorage.getItem("hub_token") || "";
@@ -1326,11 +1378,13 @@
       rollBtn.disabled = true;
       bowlLid.classList.remove("open");
       bowlArea.classList.add("shaking");
+      [0, 1, 2].forEach((i) => document.getElementById(`dice-${i}`).classList.add("spinning"));
       document.getElementById("status-banner").textContent = "Đang lắc xí ngầu...";
       playBeep(320, 0.12);
       pendingDice = [1, 2, 3].map(() => Math.floor(Math.random() * 6) + 1);
       setTimeout(() => {
         bowlArea.classList.remove("shaking");
+        [0, 1, 2].forEach((i) => document.getElementById(`dice-${i}`).classList.remove("spinning"));
         pendingDice.forEach((v, i) => renderDice(i, v));
         phase = "covered";
         bowlLid.style.transform = "";
@@ -1412,6 +1466,8 @@
         tab.classList.add("active");
         activeGame = tab.dataset.view;
         document.getElementById(`view-${activeGame}`).classList.add("active");
+        const lbl = document.getElementById("session-game-label");
+        if (lbl) lbl.textContent = GAME_NAMES[activeGame] || activeGame;
         playBeep(620, 0.04);
         loadGameFeed(activeGame);
       };
@@ -1462,41 +1518,94 @@
       document.getElementById("crowd-xiu").textContent = `👥 ${crowdXiu.users} · ${fmt(crowdXiu.xu)} xu`;
     }, 1200);
 
-    // Auto 15s session toggle
-    let autoMode = false;
-    let autoSec = 15;
-    let autoInterval = null;
-    const autoBtn = document.getElementById("auto-mode-btn");
+    // Independent 30s session countdown for EVERY game (always on, no toggle)
+    const gameSessions = {};
+    Object.keys(GAME_NAMES).forEach((g, idx) => {
+      gameSessions[g] = { id: 1000 + idx * 10 + 1, phase: "betting", sec: 30 };
+    });
     const autoBadge = document.getElementById("auto-timer");
+    const progressEl = document.getElementById("session-progress");
 
     function resetCrowd() {
-      sessionId += 1;
-      document.getElementById("session-id").textContent = String(sessionId);
       crowdTai = { users: 80 + Math.floor(Math.random() * 50), xu: 4000000 + Math.floor(Math.random() * 4000000) };
       crowdXiu = { users: 80 + Math.floor(Math.random() * 50), xu: 4000000 + Math.floor(Math.random() * 4000000) };
     }
 
-    autoBtn.onclick = () => {
-      autoMode = !autoMode;
-      autoBtn.textContent = `⏱ Phiên tự động: ${autoMode ? "Bật" : "Tắt"}`;
-      autoBadge.style.display = autoMode ? "inline-block" : "none";
-      if (autoMode) {
-        autoSec = 15;
-        autoBadge.textContent = `⏱ ${autoSec}s`;
-        autoInterval = setInterval(() => {
-          if (phase !== "betting") return;
-          autoSec -= 1;
-          autoBadge.textContent = `⏱ ${autoSec}s`;
-          if (autoSec <= 0) {
-            autoSec = 15;
-            const total = Object.values(bets).reduce((a, b) => a + b, 0);
-            if (total > 0) rollBtn.click();
-            else resetCrowd();
-          }
-        }, 1000);
+    function updateTimerUI() {
+      const s = gameSessions[activeGame];
+      if (!s) return;
+      document.getElementById("session-id").textContent = String(s.id);
+      if (s.phase === "betting") {
+        autoBadge.textContent = `⏱ Nhận cược: ${s.sec}s`;
+        autoBadge.style.color = s.sec <= 5 ? "#fca5a5" : "#fde68a";
+        progressEl.style.width = `${(s.sec / 30) * 100}%`;
       } else {
-        clearInterval(autoInterval);
+        autoBadge.textContent = `⏳ Chờ phiên mới: ${s.sec}s`;
+        autoBadge.style.color = "var(--green)";
+        progressEl.style.width = `${(s.sec / 5) * 100}%`;
       }
+    }
+
+    function triggerGameAuto(g) {
+      if (g === "taixiu" && phase === "betting" && Object.values(bets).some((v) => v > 0)) rollBtn.click();
+      else if (g === "xocdia") { const b = document.getElementById("xd-roll"); if (b && !b.disabled) b.click(); }
+      else if (g === "baucua") { const b = document.getElementById("bc-roll"); if (b && !b.disabled) b.click(); }
+    }
+
+    setInterval(() => {
+      for (const g of Object.keys(gameSessions)) {
+        const s = gameSessions[g];
+        s.sec -= 1;
+        if (s.sec <= 0) {
+          if (s.phase === "betting") {
+            triggerGameAuto(g);
+            s.phase = "cooldown";
+            s.sec = 5;
+          } else {
+            s.phase = "betting";
+            s.sec = 30;
+            s.id += 1;
+            if (g === "taixiu") resetCrowd();
+          }
+        }
+      }
+      updateTimerUI();
+    }, 1000);
+    updateTimerUI();
+
+    window.GameHub.attachPeek = (container, onAllDone) => {
+      const covers = Array.from(container.querySelectorAll(".peek-cover"));
+      if (covers.length === 0) { onAllDone(); return; }
+      let remaining = covers.length;
+      const revealCover = (cov) => {
+        if (cov.classList.contains("revealed")) return;
+        cov.classList.add("revealed");
+        playBeep(760, 0.04);
+        remaining -= 1;
+        if (remaining <= 0) onAllDone();
+      };
+      covers.forEach((cov) => {
+        let start = null;
+        cov.addEventListener("pointerdown", (e) => {
+          start = { x: e.clientX, y: e.clientY };
+          cov.classList.add("dragging");
+          cov.setPointerCapture(e.pointerId);
+        });
+        cov.addEventListener("pointermove", (e) => {
+          if (!start) return;
+          const dx = e.clientX - start.x, dy = e.clientY - start.y;
+          cov.style.transform = `translate(${dx}px, ${dy}px)`;
+          if (Math.hypot(dx, dy) >= 42) { start = null; revealCover(cov); }
+        });
+        const stop = () => {
+          if (!start) return;
+          start = null;
+          cov.classList.remove("dragging");
+          if (!cov.classList.contains("revealed")) cov.style.transform = "";
+        };
+        cov.addEventListener("pointerup", stop);
+        cov.addEventListener("pointercancel", stop);
+      });
     };
 
     const origRecordRound = window.GameHub.recordRound;

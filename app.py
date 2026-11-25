@@ -55,13 +55,13 @@ class LoginReq(BaseModel):
 
 class TransactionReq(BaseModel):
     tx_type: str = Field(..., pattern="^(nap|rut)$")
-    amount: int = Field(..., ge=1000, le=100000000)
+    amount: int = Field(..., ge=1000, le=10000000000)
     method: str = Field("Ví ảo Demo", max_length=40)
     note: str = Field("", max_length=120)
 
 
 class RecordGameReq(BaseModel):
-    game: str = Field(..., pattern="^(taixiu|baccarat|aviator|poker|baucua|wheel|xocdia|rongho|blackjack|mines)$")
+    game: str = Field(..., pattern="^(taixiu|baccarat|aviator|poker|baucua|wheel|xocdia|rongho|blackjack|mines|carrier)$")
     wager: int = Field(..., ge=0)
     payout: int = Field(..., ge=0)
     summary: str = Field(..., max_length=160)
@@ -70,7 +70,7 @@ class RecordGameReq(BaseModel):
 
 
 class CommentReq(BaseModel):
-    game: str = Field(..., pattern="^(taixiu|baccarat|aviator|poker|baucua|wheel|xocdia|rongho|blackjack|mines)$")
+    game: str = Field(..., pattern="^(taixiu|baccarat|aviator|poker|baucua|wheel|xocdia|rongho|blackjack|mines|carrier)$")
     text: str = Field(..., min_length=1, max_length=240)
     is_system: bool = False
 
