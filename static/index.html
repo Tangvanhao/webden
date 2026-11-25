@@ -688,6 +688,55 @@
       50% { transform: translateY(4px) scaleY(1.04); filter: blur(1.5px); }
       100% { transform: translateY(-4px) scaleY(0.92); filter: blur(1px); }
     }
+    .slot-cabinet {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .slot-lever {
+      width: 34px;
+      height: 112px;
+      position: relative;
+      cursor: pointer;
+      user-select: none;
+      touch-action: none;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .lever-base {
+      position: absolute;
+      bottom: 8px;
+      width: 24px;
+      height: 28px;
+      background: linear-gradient(90deg, #4b5563, #9ca3af, #374151);
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+    .lever-arm {
+      position: absolute;
+      bottom: 22px;
+      width: 8px;
+      height: 76px;
+      background: linear-gradient(90deg, #9ca3af, #f3f4f6, #4b5563);
+      border-radius: 4px;
+      transform-origin: bottom center;
+      transition: transform 0.28s cubic-bezier(0.3, 1.4, 0.5, 1);
+    }
+    .lever-knob {
+      position: absolute;
+      top: -16px;
+      left: -10px;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, #fca5a5, #ef4444 55%, #7f1d1d);
+      border: 2px solid #fde68a;
+      box-shadow: 0 4px 12px rgba(239, 68, 68, 0.6);
+    }
+    .slot-lever.pulled .lever-arm {
+      transform: scaleY(0.35) rotateX(55deg);
+    }
     .jackpot-box {
       background: linear-gradient(135deg, rgba(239,68,68,0.2), rgba(245,185,66,0.2));
       border: 1px solid rgba(245,185,66,0.55);

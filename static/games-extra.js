@@ -1056,27 +1056,23 @@
     root.innerHTML = `
       <section class="stage">
         <div class="jackpot-box">👑 HŨ TÍCH LŨY: <span id="sl-jackpot">88,450,000</span> xu</div>
-        <div class="status-banner" id="sl-status">Bấm vào máy Quay Hũ để đặt cược — Tự quay khi hết 30s!</div>
-        <div class="slot-machine" id="sl-machine" style="cursor:pointer;" title="Nhấn để đặt cược quay hũ">
-          <div class="slot-reel" id="sl-r0">7️⃣</div>
-          <div class="slot-reel" id="sl-r1">👑</div>
-          <div class="slot-reel" id="sl-r2">💎</div>
+        <div class="status-banner" id="sl-status">Chọn mức cược rồi kéo hoặc bấm Cần Gạt bên phải để Quay Hũ!</div>
+        <div class="slot-cabinet">
+          <div class="slot-machine" id="sl-machine">
+            <div class="slot-reel" id="sl-r0">7️⃣</div>
+            <div class="slot-reel" id="sl-r1">👑</div>
+            <div class="slot-reel" id="sl-r2">💎</div>
+          </div>
+          <div class="slot-lever" id="sl-lever" title="Kéo hoặc bấm cần gạt để quay">
+            <div class="lever-base"></div>
+            <div class="lever-arm"><div class="lever-knob"></div></div>
+          </div>
         </div>
         <div class="result-readout" id="sl-result"></div>
       </section>
       <section class="controls">
         <div class="chips">${chipButtonsHtml("data-slv")}</div>
       </section>`;
-
-    let queuedSlotWager = 0;
-    document.getElementById("sl-machine").onclick = () => {
-      if (spinning) return;
-      const w = betAmt === "allin" ? Hub.getBalance() : betAmt;
-      if (w <= 0 || !Hub.spend(w)) { document.getElementById("sl-status").textContent = "Không đủ xu!"; return; }
-      queuedSlotWager += w;
-      Hub.flyCoin(document.getElementById("sl-machine"));
-      document.getElementById("sl-status").textContent = `Đã cược ${Hub.fmt(queuedSlotWager)} xu — Chờ tự quay!`;
-    };
 
     setInterval(() => {
       jackpot += Math.floor(Math.random() * 12000);
@@ -1091,10 +1087,18 @@
       betAmt = b.dataset.slv === "allin" ? "allin" : Number(b.dataset.slv);
     }));
 
-    function runSlot() {
+    function pullAndSpin() {
       if (spinning) return;
-      const wager = queuedSlotWager;
-      queuedSlotWager = 0;
+      const wager = betAmt === "allin" ? Hub.getBalance() : betAmt;
+      if (wager <= 0 || !Hub.spend(wager)) {
+        document.getElementById("sl-status").textContent = "Không đủ xu!";
+        return;
+      }
+      const lever = document.getElementById("sl-lever");
+      lever.classList.add("pulled");
+      setTimeout(() => lever.classList.remove("pulled"), 340);
+
+      Hub.flyCoin(document.getElementById("sl-machine"));
       spinning = true;
       document.getElementById("sl-result").textContent = "";
       [0, 1, 2].forEach((i) => document.getElementById(`sl-r${i}`).classList.add("spinning"));
@@ -1121,12 +1125,24 @@
         const net = payout - wager;
         Hub.recordRound("slots", wager, payout, `${picks.map((p) => p.icon).join("")} (${label})`, picks.map((p) => p.icon).join(""), mult > 0 ? "win" : "lose");
         document.getElementById("sl-result").innerHTML = `<strong>${label}</strong> · ${net >= 0 ? `<span style="color:var(--green)">+${Hub.fmt(net)} xu</span>` : `<span style="color:var(--tai)">${Hub.fmt(net)} xu</span>`}`;
-        document.getElementById("sl-status").textContent = "Bấm vào máy Quay Hũ để đặt cược phiên mới!";
+        document.getElementById("sl-status").textContent = "Kéo cần gạt để quay tiếp!";
         Hub.playBeep(mult > 0 ? 960 : 240, 0.14);
       }, 1100);
     }
 
-    Hub.autoHandlers.slots = { roll: runSlot };
+    const leverEl = document.getElementById("sl-lever");
+    let leverStartY = null;
+    leverEl.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      leverStartY = e.clientY;
+    });
+    leverEl.addEventListener("pointerup", (e) => {
+      if (leverStartY === null) return;
+      const dy = e.clientY - leverStartY;
+      leverStartY = null;
+      if (dy >= -10) pullAndSpin();
+    });
+    leverEl.addEventListener("click", () => { if (leverStartY === null) pullAndSpin(); });
   }
 
   initBaccarat(); initAviator(); initPoker(); initBauCua(); initWheel();
