@@ -61,7 +61,7 @@ class TransactionReq(BaseModel):
 
 
 class RecordGameReq(BaseModel):
-    game: str = Field(..., pattern="^(taixiu|baccarat|aviator|poker|baucua|wheel|xocdia|rongho|blackjack|mines|carrier)$")
+    game: str = Field(..., pattern="^(taixiu|baccarat|aviator|poker|baucua|wheel|xocdia|rongho|blackjack|mines|carrier|slots)$")
     wager: int = Field(..., ge=0)
     payout: int = Field(..., ge=0)
     summary: str = Field(..., max_length=160)
@@ -70,7 +70,7 @@ class RecordGameReq(BaseModel):
 
 
 class CommentReq(BaseModel):
-    game: str = Field(..., pattern="^(taixiu|baccarat|aviator|poker|baucua|wheel|xocdia|rongho|blackjack|mines|carrier)$")
+    game: str = Field(..., pattern="^(taixiu|baccarat|aviator|poker|baucua|wheel|xocdia|rongho|blackjack|mines|carrier|slots)$")
     text: str = Field(..., min_length=1, max_length=240)
     is_system: bool = False
 

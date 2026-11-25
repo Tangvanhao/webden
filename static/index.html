@@ -128,17 +128,21 @@
     .btn:hover { border-color: var(--gold); }
     .btn:active { transform: scale(0.97); }
     .btn-gold {
-      background: linear-gradient(135deg, var(--gold), var(--gold-dark));
+      background: linear-gradient(180deg, #fcd34d 0%, var(--gold) 50%, var(--gold-dark) 100%);
       color: #111827;
       border: none;
-      font-weight: 700;
+      font-weight: 800;
+      box-shadow: 0 4px 0 #8a5a08, 0 8px 18px rgba(245, 185, 66, 0.28);
     }
+    .btn-gold:active { transform: translateY(3px); box-shadow: 0 1px 0 #8a5a08; }
     .btn-emerald {
-      background: linear-gradient(135deg, #10b981, #059669);
+      background: linear-gradient(180deg, #34d399 0%, #10b981 55%, #059669 100%);
       color: #fff;
       border: none;
-      font-weight: 700;
+      font-weight: 800;
+      box-shadow: 0 4px 0 #046c4e, 0 8px 18px rgba(16, 185, 129, 0.25);
     }
+    .btn-emerald:active { transform: translateY(3px); box-shadow: 0 1px 0 #046c4e; }
 
     /* Stats Bar */
     .stats-bar {
@@ -298,19 +302,21 @@
     /* Betting Boards */
     .board { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
     .bet-card {
-      background: var(--panel);
+      background: linear-gradient(180deg, rgba(26, 35, 53, 0.96), rgba(14, 20, 32, 0.98));
       border: 2px solid var(--border);
-      border-radius: 16px;
+      border-radius: 18px;
       padding: 18px;
       cursor: pointer;
       display: flex;
       flex-direction: column;
       align-items: center;
       gap: 6px;
-      transition: transform 0.12s, border-color 0.15s;
+      box-shadow: 0 8px 0 rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+      transition: transform 0.14s, border-color 0.15s, box-shadow 0.15s;
       user-select: none;
     }
-    .bet-card:hover { transform: translateY(-2px); }
+    .bet-card:hover { transform: translateY(-3px); }
+    .bet-card:active { transform: translateY(2px); box-shadow: 0 3px 0 rgba(0,0,0,0.45); }
     .bet-card.tai.active, .bet-card.tai.win { border-color: var(--tai); background: rgba(239, 68, 68, 0.1); }
     .bet-card.xiu.active, .bet-card.xiu.win { border-color: var(--xiu); background: rgba(59, 130, 246, 0.1); }
     .bet-name { font-size: 26px; font-weight: 900; letter-spacing: 0.06em; }
@@ -654,6 +660,45 @@
     .peek-cover.dragging { transition: none; cursor: grabbing; }
     .peek-cover.revealed { transform: translateY(-115%); opacity: 0; pointer-events: none; }
 
+    /* 3D Slot Machine (Quay Hũ) */
+    .slot-machine {
+      display: flex;
+      gap: 12px;
+      padding: 16px 20px;
+      background: linear-gradient(180deg, #1f2937, #0b0f17);
+      border: 3px solid var(--gold);
+      border-radius: 18px;
+      box-shadow: inset 0 10px 24px rgba(0,0,0,0.8), 0 10px 28px rgba(245,185,66,0.22);
+    }
+    .slot-reel {
+      width: 76px;
+      height: 88px;
+      border-radius: 12px;
+      background: linear-gradient(180deg, #d1d5db 0%, #ffffff 50%, #9ca3af 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 42px;
+      box-shadow: inset 0 6px 12px rgba(0,0,0,0.35), 0 4px 10px rgba(0,0,0,0.5);
+      user-select: none;
+    }
+    .slot-reel.spinning { animation: reelSpin 0.18s linear infinite; }
+    @keyframes reelSpin {
+      0% { transform: translateY(-4px) scaleY(0.92); filter: blur(1px); }
+      50% { transform: translateY(4px) scaleY(1.04); filter: blur(1.5px); }
+      100% { transform: translateY(-4px) scaleY(0.92); filter: blur(1px); }
+    }
+    .jackpot-box {
+      background: linear-gradient(135deg, rgba(239,68,68,0.2), rgba(245,185,66,0.2));
+      border: 1px solid rgba(245,185,66,0.55);
+      padding: 6px 18px;
+      border-radius: 999px;
+      font-weight: 900;
+      font-size: 15px;
+      color: #fde68a;
+      box-shadow: 0 0 18px rgba(245,185,66,0.25);
+    }
+
     @media (max-width: 600px) {
       .board, .sub-board, .bac-table { grid-template-columns: 1fr; }
       .bc-grid { grid-template-columns: repeat(2, 1fr); }
@@ -711,12 +756,13 @@
       <button class="game-tab" data-view="baucua">🦀 Bầu Cua</button>
       <button class="game-tab" data-view="wheel">🎡 Vòng Quay</button>
       <button class="game-tab" data-view="carrier">🛩️ Hạ Cánh</button>
+      <button class="game-tab" data-view="slots">🎰 Quay Hũ</button>
     </nav>
 
     <!-- UNIVERSAL 30S SESSION COUNTDOWN FOR EACH GAME -->
     <section class="glass" style="padding:11px 16px;display:flex;flex-direction:column;gap:8px;">
       <div class="tx-session-bar">
-        <span><strong style="color:var(--gold);" id="session-game-label">Tài Xỉu</strong> · Phiên #<span id="session-id">1042</span></span>
+        <span><strong style="color:var(--gold);" id="session-game-label">Tài Xỉu</strong> · Phiên #<span id="session-id">1042</span> · <span id="table-crowd-info" style="color:var(--muted);font-size:12px;">👥 278 đang cược · 24,250,000 xu</span></span>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
           <button class="btn" id="peek-toggle-btn" style="padding:4px 10px;font-size:12px;">✋ Chế độ Nặn: Bật</button>
           <span class="timer-badge" id="auto-timer">⏱ Nhận cược: 30s</span>
@@ -790,6 +836,7 @@
     <div id="view-blackjack" class="game-view"></div>
     <div id="view-mines" class="game-view"></div>
     <div id="view-carrier" class="game-view"></div>
+    <div id="view-slots" class="game-view"></div>
 
     <!-- UNIVERSAL SOI CẦU + BÌNH LUẬN CHO TẤT CẢ TRÒ CHƠI -->
     <section class="history-panel glass">
@@ -925,6 +972,7 @@
       baucua: "Bầu Cua",
       wheel: "Vòng Quay",
       carrier: "Hạ Cánh Tàu Sân Bay",
+      slots: "Quay Hũ Jackpot",
     };
 
     let token = localStorage.getItem("hub_token") || "";
@@ -1551,18 +1599,47 @@
       document.getElementById("crowd-xiu").textContent = `👥 ${crowdXiu.users} · ${fmt(crowdXiu.xu)} xu`;
     }, 1200);
 
-    // Independent 30s session countdown for EVERY game (always on, no toggle)
+    // Synchronized UTC-clock 36s session (30s betting + 6s reveal) so all players share the same Phiên # and countdown
     const gameSessions = {};
-    Object.keys(GAME_NAMES).forEach((g, idx) => {
-      gameSessions[g] = { id: 1000 + idx * 10 + 1, phase: "betting", sec: 30 };
+    const CYCLE = 36;
+    function computeSyncSession() {
+      const nowSec = Math.floor(Date.now() / 1000);
+      const id = 1000 + (Math.floor(nowSec / CYCLE) % 90000);
+      const rem = CYCLE - (nowSec % CYCLE);
+      if (rem > 6) return { id, phase: "betting", sec: rem - 6 };
+      return { id, phase: "cooldown", sec: rem };
+    }
+    const initSync = computeSyncSession();
+    Object.keys(GAME_NAMES).forEach((g) => {
+      gameSessions[g] = { ...initSync };
     });
+
     const autoBadge = document.getElementById("auto-timer");
     const progressEl = document.getElementById("session-progress");
+    const tableCrowdInfo = document.getElementById("table-crowd-info");
+    const tablePools = {};
+    Object.keys(GAME_NAMES).forEach((g) => {
+      tablePools[g] = { users: 110 + Math.floor(Math.random() * 90), xu: 9500000 + Math.floor(Math.random() * 12000000) };
+    });
 
     function resetCrowd() {
       crowdTai = { users: 80 + Math.floor(Math.random() * 50), xu: 4000000 + Math.floor(Math.random() * 4000000) };
       crowdXiu = { users: 80 + Math.floor(Math.random() * 50), xu: 4000000 + Math.floor(Math.random() * 4000000) };
+      Object.keys(tablePools).forEach((g) => {
+        tablePools[g] = { users: 90 + Math.floor(Math.random() * 110), xu: 6000000 + Math.floor(Math.random() * 14000000) };
+      });
     }
+
+    setInterval(() => {
+      for (const g of Object.keys(tablePools)) {
+        tablePools[g].users += Math.floor(Math.random() * 3);
+        tablePools[g].xu += Math.floor(Math.random() * 260000);
+      }
+      const tp = tablePools[activeGame];
+      if (tp && tableCrowdInfo) {
+        tableCrowdInfo.textContent = `👥 ${tp.users} đang cược · ${fmt(tp.xu)} xu`;
+      }
+    }, 1200);
 
     function updateTimerUI() {
       const s = gameSessions[activeGame];
@@ -1573,9 +1650,9 @@
         autoBadge.style.color = s.sec <= 5 ? "#fca5a5" : "#fde68a";
         progressEl.style.width = `${(s.sec / 30) * 100}%`;
       } else {
-        autoBadge.textContent = `⏳ Chờ phiên mới: ${s.sec}s`;
+        autoBadge.textContent = `⏳ Mở thưởng: ${s.sec}s`;
         autoBadge.style.color = "var(--green)";
-        progressEl.style.width = `${(s.sec / 5) * 100}%`;
+        progressEl.style.width = `${(s.sec / 6) * 100}%`;
       }
     }
 
@@ -1591,26 +1668,23 @@
       if (h && typeof h[eventType] === "function") h[eventType]();
     }
 
+    let lastPhase = initSync.phase;
     setInterval(() => {
+      const sync = computeSyncSession();
       for (const g of Object.keys(gameSessions)) {
-        const s = gameSessions[g];
-        s.sec -= 1;
-        if (s.sec <= 0) {
-          if (s.phase === "betting") {
-            triggerGameAuto(g, "roll");
-            s.phase = "cooldown";
-            s.sec = 6;
-          } else {
-            triggerGameAuto(g, "reveal");
-            s.phase = "betting";
-            s.sec = 30;
-            s.id += 1;
-            if (g === "taixiu") resetCrowd();
-          }
+        gameSessions[g] = { ...sync };
+      }
+      if (sync.phase !== lastPhase) {
+        if (sync.phase === "cooldown") {
+          Object.keys(gameSessions).forEach((g) => triggerGameAuto(g, "roll"));
+        } else {
+          Object.keys(gameSessions).forEach((g) => triggerGameAuto(g, "reveal"));
+          resetCrowd();
         }
+        lastPhase = sync.phase;
       }
       updateTimerUI();
-    }, 1000);
+    }, 500);
     updateTimerUI();
 
     window.GameHub.attachPeek = (container, onAllDone) => {

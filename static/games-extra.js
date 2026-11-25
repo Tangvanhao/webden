@@ -153,19 +153,28 @@
     let state = "idle", betAmt = 5000, activeWager = 0, cashedOut = false, mult = 1.0, crashAt = 2.0, startTs = 0;
     root.innerHTML = `
       <section class="stage">
-        <div class="status-banner" id="av-status">Đặt cược và nhấn Cất Cánh — Rút tiền trước khi máy bay nổ!</div>
-        <div class="av-canvas-wrap"><canvas id="av-canvas" width="840" height="220"></canvas><div class="av-mult" id="av-mult">1.00x</div></div>
+        <div class="status-banner" id="av-status">Bấm vào bầu trời để đặt cược — Máy bay tự cất cánh khi hết 30s!</div>
+        <div class="av-canvas-wrap" id="av-stage" style="cursor:pointer;"><canvas id="av-canvas" width="840" height="220"></canvas><div class="av-mult" id="av-mult">1.00x</div></div>
+        <div class="actions"><button class="btn btn-emerald" id="av-action-btn" style="display:none;">Rút Tiền</button></div>
       </section>
       <section class="controls">
         <div class="chips">${chipButtonsHtml("data-aval")}</div>
-        <div class="actions"><button class="btn btn-gold" id="av-action-btn">Cất Cánh</button></div>
       </section>`;
 
     const canvas = document.getElementById("av-canvas"), ctx = canvas.getContext("2d");
     const multEl = document.getElementById("av-mult"), statusEl = document.getElementById("av-status"), actionBtn = document.getElementById("av-action-btn");
+    let queuedWager = 0;
     root.querySelectorAll("[data-aval]").forEach((btn) => {
       btn.onclick = () => { if (state === "flying") return; root.querySelectorAll("[data-aval]").forEach((b) => b.classList.remove("selected")); btn.classList.add("selected"); betAmt = btn.dataset.aval === "allin" ? "allin" : Number(btn.dataset.aval); };
     });
+    document.getElementById("av-stage").onclick = () => {
+      if (state === "flying") return;
+      const w = betAmt === "allin" ? Hub.getBalance() : betAmt;
+      if (w <= 0 || !Hub.spend(w)) { statusEl.textContent = "Không đủ xu!"; return; }
+      queuedWager += w;
+      Hub.flyCoin(document.getElementById("av-stage"));
+      statusEl.textContent = `Đã đặt ${Hub.fmt(queuedWager)} xu — Chờ máy bay tự cất cánh!`;
+    };
 
     function drawFlight(progress, crashed) {
       const w = canvas.width, h = canvas.height;
@@ -179,17 +188,19 @@
       ctx.fillText(crashed ? "💥" : "✈️", endX, endY - 4);
     }
 
+    function launchFlight() {
+      if (state === "flying") return;
+      activeWager = queuedWager; queuedWager = 0; cashedOut = false; mult = 1.0;
+      const r = Math.random();
+      crashAt = r < 0.05 ? 1.0 : Math.max(1.05, Math.min(25, Math.floor((0.96 / (1 - r)) * 100) / 100));
+      state = "flying"; startTs = performance.now(); multEl.style.color = "var(--gold)";
+      if (activeWager > 0) { actionBtn.style.display = "inline-block"; actionBtn.disabled = false; actionBtn.textContent = "Rút Tiền"; }
+      statusEl.textContent = activeWager > 0 ? "Máy bay đang bay! Nhấn Rút Tiền trước khi nổ!" : "Chuyến bay tự động đang bay...";
+      tick();
+    }
+
     actionBtn.onclick = () => {
-      if (state !== "flying") {
-        const wager = betAmt === "allin" ? Hub.getBalance() : betAmt;
-        if (wager <= 0 || !Hub.spend(wager)) { statusEl.textContent = "Không đủ xu!"; return; }
-        activeWager = wager; cashedOut = false; mult = 1.0;
-        const r = Math.random();
-        crashAt = r < 0.05 ? 1.0 : Math.max(1.05, Math.min(25, Math.floor((0.96 / (1 - r)) * 100) / 100));
-        state = "flying"; startTs = performance.now(); multEl.style.color = "var(--gold)";
-        actionBtn.textContent = "Rút Tiền"; statusEl.textContent = "Máy bay đang bay!";
-        tick();
-      } else if (!cashedOut) {
+      if (state === "flying" && !cashedOut && activeWager > 0) {
         cashedOut = true;
         const payout = Math.floor(activeWager * mult);
         Hub.win(payout);
@@ -208,16 +219,17 @@
         drawFlight(Math.min(1, elapsed / 12), true);
         if (!cashedOut) {
           Hub.recordRound("aviator", activeWager, 0, `Nổ ở ${crashAt.toFixed(2)}x`, `${crashAt.toFixed(1)}x`, "lose");
-          statusEl.textContent = `Máy bay nổ ở ${crashAt.toFixed(2)}x!`; Hub.playBeep(210, 0.16);
+          statusEl.textContent = `Máy bay nổ ở ${crashAt.toFixed(2)}x! Bấm bầu trời để đặt chuyến mới.`; Hub.playBeep(210, 0.16);
         }
-        actionBtn.disabled = false; actionBtn.textContent = "Cất Cánh"; return;
+        actionBtn.style.display = "none"; return;
       }
       multEl.textContent = `${mult.toFixed(2)}x`;
-      if (!cashedOut) actionBtn.textContent = `Rút (${Hub.fmt(Math.floor(activeWager * mult))} xu)`;
+      if (!cashedOut && activeWager > 0) actionBtn.textContent = `Rút (${Hub.fmt(Math.floor(activeWager * mult))} xu)`;
       drawFlight(Math.min(1, elapsed / 12), false);
       requestAnimationFrame(tick);
     }
     drawFlight(0.05, false);
+    Hub.autoHandlers.aviator = { roll: launchFlight };
   }
 
   /* 3. POKER */
@@ -889,7 +901,7 @@
       ctx.fillStyle = "#0e3a5c";
       ctx.fillRect(0, h - 42, w, 42);
 
-      // Aircraft carrier ship
+      // Aircraft carrier ship + Glowing Landing Target (Điểm Tiếp Đáp)
       ctx.fillStyle = "#334155";
       ctx.beginPath();
       ctx.moveTo(ship.x, ship.y + ship.h);
@@ -898,15 +910,34 @@
       ctx.lineTo(ship.x + ship.w, ship.y + ship.h);
       ctx.closePath();
       ctx.fill();
-      // Landing deck strip
-      ctx.fillStyle = "#f5b942";
-      ctx.fillRect(ship.x + 18, ship.y - 3, ship.w - 34, 4);
+
+      // Approach glide path guide
+      ctx.save();
+      ctx.setLineDash([6, 6]);
+      ctx.strokeStyle = "rgba(16, 185, 129, 0.45)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(ship.x - 140, ship.y - 65);
+      ctx.lineTo(ship.x + 25, ship.y);
+      ctx.stroke();
+      ctx.restore();
+
+      // Glowing Landing Zone Pad
+      const padX = ship.x + 16, padW = ship.w - 60;
+      ctx.fillStyle = "rgba(16, 185, 129, 0.32)";
+      ctx.fillRect(padX, ship.y - 8, padW, 8);
+      ctx.fillStyle = "#10b981";
+      ctx.fillRect(padX, ship.y - 4, padW, 4);
+      // Beacon dot
+      ctx.beginPath(); ctx.arc(padX + padW / 2, ship.y - 6, 5, 0, Math.PI * 2);
+      ctx.fillStyle = "#34d399"; ctx.fill();
+
       ctx.fillStyle = "#94a3b8";
-      ctx.fillRect(ship.x + ship.w - 42, ship.y - 22, 24, 22); // bridge tower
-      ctx.fillStyle = "#fde68a";
+      ctx.fillRect(ship.x + ship.w - 40, ship.y - 24, 24, 24);
+      ctx.fillStyle = "#6ee7b7";
       ctx.font = "bold 11px sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText("ĐÁP TÀU", ship.x + ship.w / 2, ship.y + 16);
+      ctx.fillText("🎯 ĐIỂM TIẾP ĐÁP", ship.x + ship.w / 2 - 8, ship.y + 16);
 
       // Items (x multipliers & bombs)
       for (const it of items) {
@@ -1009,17 +1040,99 @@
     drawScene();
   }
 
-  initBaccarat(); initAviator(); initPoker(); initBauCua(); initWheel();
-  initXocDia(); initRongHo(); initBlackjack(); initMines(); initCarrier();
+  /* 11. QUAY HŨ JACKPOT (3D SLOT MACHINE) */
+  function initSlots() {
+    const root = document.getElementById("view-slots");
+    const SYMS = [
+      { icon: "🍒", mult: 8 },
+      { icon: "🍋", mult: 8 },
+      { icon: "🔔", mult: 15 },
+      { icon: "💎", mult: 25 },
+      { icon: "7️⃣", mult: 50 },
+      { icon: "👑", mult: 100 },
+    ];
+    let betAmt = 5000, spinning = false, jackpot = 88450000;
 
-  // Ensure Aviator, Poker, Blackjack, Mines, Carrier also auto-run live sessions when idle
-  Hub.autoHandlers.aviator = {
-    roll: () => {
-      const r = Math.random();
-      const crash = r < 0.05 ? 1.0 : Math.max(1.05, Math.min(18, Math.floor((0.96 / (1 - r)) * 100) / 100));
-      Hub.recordRound("aviator", 0, 0, `Phiên tự động nổ ở ${crash.toFixed(2)}x`, `${crash.toFixed(1)}x`, crash >= 2 ? "win" : "lose");
-    },
-  };
+    root.innerHTML = `
+      <section class="stage">
+        <div class="jackpot-box">👑 HŨ TÍCH LŨY: <span id="sl-jackpot">88,450,000</span> xu</div>
+        <div class="status-banner" id="sl-status">Bấm vào máy Quay Hũ để đặt cược — Tự quay khi hết 30s!</div>
+        <div class="slot-machine" id="sl-machine" style="cursor:pointer;" title="Nhấn để đặt cược quay hũ">
+          <div class="slot-reel" id="sl-r0">7️⃣</div>
+          <div class="slot-reel" id="sl-r1">👑</div>
+          <div class="slot-reel" id="sl-r2">💎</div>
+        </div>
+        <div class="result-readout" id="sl-result"></div>
+      </section>
+      <section class="controls">
+        <div class="chips">${chipButtonsHtml("data-slv")}</div>
+      </section>`;
+
+    let queuedSlotWager = 0;
+    document.getElementById("sl-machine").onclick = () => {
+      if (spinning) return;
+      const w = betAmt === "allin" ? Hub.getBalance() : betAmt;
+      if (w <= 0 || !Hub.spend(w)) { document.getElementById("sl-status").textContent = "Không đủ xu!"; return; }
+      queuedSlotWager += w;
+      Hub.flyCoin(document.getElementById("sl-machine"));
+      document.getElementById("sl-status").textContent = `Đã cược ${Hub.fmt(queuedSlotWager)} xu — Chờ tự quay!`;
+    };
+
+    setInterval(() => {
+      jackpot += Math.floor(Math.random() * 12000);
+      const el = document.getElementById("sl-jackpot");
+      if (el) el.textContent = Hub.fmt(jackpot);
+    }, 1400);
+
+    root.querySelectorAll("[data-slv]").forEach((b) => (b.onclick = () => {
+      if (spinning) return;
+      root.querySelectorAll("[data-slv]").forEach((x) => x.classList.remove("selected"));
+      b.classList.add("selected");
+      betAmt = b.dataset.slv === "allin" ? "allin" : Number(b.dataset.slv);
+    }));
+
+    function runSlot() {
+      if (spinning) return;
+      const wager = queuedSlotWager;
+      queuedSlotWager = 0;
+      spinning = true;
+      document.getElementById("sl-result").textContent = "";
+      [0, 1, 2].forEach((i) => document.getElementById(`sl-r${i}`).classList.add("spinning"));
+      Hub.playBeep(440, 0.08);
+
+      const picks = [0, 1, 2].map(() => SYMS[Math.floor(Math.random() * SYMS.length)]);
+      setTimeout(() => {
+        [0, 1, 2].forEach((i) => {
+          const r = document.getElementById(`sl-r${i}`);
+          r.classList.remove("spinning");
+          r.textContent = picks[i].icon;
+        });
+        spinning = false;
+        let mult = 0, label = "Chưa trúng";
+        if (picks[0].icon === picks[1].icon && picks[1].icon === picks[2].icon) {
+          mult = picks[0].mult;
+          label = picks[0].icon === "👑" ? "NỔ HŨ JACKPOT 👑👑👑" : `NỔ 3x ${picks[0].icon}`;
+        } else if (picks[0].icon === picks[1].icon || picks[1].icon === picks[2].icon || picks[0].icon === picks[2].icon) {
+          mult = 2;
+          label = "Trùng 2 biểu tượng (x2)";
+        }
+        const payout = mult > 0 ? wager * mult : 0;
+        Hub.win(payout);
+        const net = payout - wager;
+        Hub.recordRound("slots", wager, payout, `${picks.map((p) => p.icon).join("")} (${label})`, picks.map((p) => p.icon).join(""), mult > 0 ? "win" : "lose");
+        document.getElementById("sl-result").innerHTML = `<strong>${label}</strong> · ${net >= 0 ? `<span style="color:var(--green)">+${Hub.fmt(net)} xu</span>` : `<span style="color:var(--tai)">${Hub.fmt(net)} xu</span>`}`;
+        document.getElementById("sl-status").textContent = "Bấm vào máy Quay Hũ để đặt cược phiên mới!";
+        Hub.playBeep(mult > 0 ? 960 : 240, 0.14);
+      }, 1100);
+    }
+
+    Hub.autoHandlers.slots = { roll: runSlot };
+  }
+
+  initBaccarat(); initAviator(); initPoker(); initBauCua(); initWheel();
+  initXocDia(); initRongHo(); initBlackjack(); initMines(); initCarrier(); initSlots();
+
+  // Ensure Poker, Blackjack, Mines, Carrier also auto-run live sessions when idle
   Hub.autoHandlers.poker = {
     roll: () => {
       const btn = document.getElementById("pk-btn");
