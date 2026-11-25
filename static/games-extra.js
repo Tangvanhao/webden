@@ -43,28 +43,42 @@
   /* 1. BACCARAT */
   function initBaccarat() {
     const root = document.getElementById("view-baccarat");
-    let betSide = "player", betAmt = 5000, busy = false;
+    let betAmt = 5000, busy = false;
+    let bacBets = { player: 0, tie: 0, banker: 0 };
     root.innerHTML = `
       <section class="stage">
-        <div class="status-banner" id="bac-status">Chọn cửa Player / Banker / Hòa và nhấn Chia Bài</div>
+        <div class="status-banner" id="bac-status">Đặt cược Player / Banker / Hòa — Tự động chia bài khi hết 30s!</div>
         <div class="bac-table">
           <div class="bac-hand"><div class="bac-label">PLAYER (<span id="bac-p-score">0</span> điểm)</div><div class="card-row" id="bac-p-cards"></div></div>
           <div class="bac-hand"><div class="bac-label">BANKER (<span id="bac-b-score">0</span> điểm)</div><div class="card-row" id="bac-b-cards"></div></div>
         </div>
+        <div class="actions"><button class="btn" id="bac-reveal-btn" style="display:none;">Mở Hết Bài</button></div>
         <div class="result-readout" id="bac-result"></div>
       </section>
       <section class="sub-board">
-        <div class="sub-card active" data-bac="player"><div class="sub-title" style="color:var(--xiu)">PLAYER</div><div class="sub-odd">Thưởng 1:1</div></div>
-        <div class="sub-card" data-bac="tie"><div class="sub-title" style="color:var(--green)">HÒA (TIE)</div><div class="sub-odd">Thưởng 1:8</div></div>
-        <div class="sub-card" data-bac="banker"><div class="sub-title" style="color:var(--tai)">BANKER</div><div class="sub-odd">Thưởng 1:0.95</div></div>
+        <div class="sub-card" data-bac="player"><div class="sub-title" style="color:var(--xiu)">PLAYER</div><div class="sub-odd">Thưởng 1:1</div><div class="sub-amt" id="bac-amt-player">Cược: 0</div></div>
+        <div class="sub-card" data-bac="tie"><div class="sub-title" style="color:var(--green)">HÒA (TIE)</div><div class="sub-odd">Thưởng 1:8</div><div class="sub-amt" id="bac-amt-tie">Cược: 0</div></div>
+        <div class="sub-card" data-bac="banker"><div class="sub-title" style="color:var(--tai)">BANKER</div><div class="sub-odd">Thưởng 1:0.95</div><div class="sub-amt" id="bac-amt-banker">Cược: 0</div></div>
       </section>
       <section class="controls">
         <div class="chips">${chipButtonsHtml("data-bval")}</div>
-        <div class="actions"><button class="btn" id="bac-reveal-btn" style="display:none;">Mở Hết Bài</button><button class="btn btn-gold" id="bac-deal-btn">Chia Bài</button></div>
       </section>`;
 
+    const syncBac = () => ["player", "tie", "banker"].forEach((k) => {
+      document.getElementById(`bac-amt-${k}`).textContent = `Cược: ${Hub.fmt(bacBets[k])}`;
+      root.querySelector(`[data-bac="${k}"]`).classList.toggle("active", bacBets[k] > 0);
+    });
     root.querySelectorAll("[data-bac]").forEach((el) => {
-      el.onclick = () => { if (busy) return; root.querySelectorAll("[data-bac]").forEach((x) => x.classList.remove("active")); el.classList.add("active"); betSide = el.dataset.bac; };
+      el.onclick = () => {
+        if (busy) return;
+        const k = el.dataset.bac;
+        if ((k === "player" && bacBets.banker > 0) || (k === "banker" && bacBets.player > 0)) {
+          document.getElementById("bac-status").textContent = "Chỉ được chọn Player hoặc Banker!"; return;
+        }
+        const amt = betAmt === "allin" ? Hub.getBalance() : betAmt;
+        if (amt <= 0 || !Hub.spend(amt)) { document.getElementById("bac-status").textContent = "Không đủ xu!"; return; }
+        bacBets[k] += amt; Hub.playBeep(740, 0.04); syncBac();
+      };
     });
     root.querySelectorAll("[data-bval]").forEach((btn) => {
       btn.onclick = () => { root.querySelectorAll("[data-bval]").forEach((b) => b.classList.remove("selected")); btn.classList.add("selected"); betAmt = btn.dataset.bval === "allin" ? "allin" : Number(btn.dataset.bval); };
@@ -72,11 +86,10 @@
     const bacVal = (c) => (c.rank === "A" ? 1 : ["10", "J", "Q", "K"].includes(c.rank) ? 0 : Number(c.rank));
     const handScore = (cards) => cards.reduce((s, c) => s + bacVal(c), 0) % 10;
 
-    function runBaccarat(allowEmpty = false) {
+    function runBaccarat() {
       if (busy) return;
-      const wager = allowEmpty ? 0 : (betAmt === "allin" ? Hub.getBalance() : betAmt);
-      if (!allowEmpty && (wager <= 0 || !Hub.spend(wager))) { document.getElementById("bac-status").textContent = "Không đủ xu!"; return; }
       busy = true;
+      const wager = bacBets.player + bacBets.banker + bacBets.tie;
       const deck = createDeck();
       const pCards = [deck.pop(), deck.pop()], bCards = [deck.pop(), deck.pop()];
       let pScore = handScore(pCards), bScore = handScore(bCards);
@@ -90,14 +103,14 @@
         }
       }
       pScore = handScore(pCards); bScore = handScore(bCards);
-      document.getElementById("bac-p-cards").innerHTML = pCards.map((c) => cardHtml(c, true)).join("");
-      document.getElementById("bac-b-cards").innerHTML = bCards.map((c) => cardHtml(c, true)).join("");
-      document.getElementById("bac-p-score").textContent = "?";
-      document.getElementById("bac-b-score").textContent = "?";
+      const usePeek = Hub.isPeekEnabled();
+      document.getElementById("bac-p-cards").innerHTML = pCards.map((c) => cardHtml(c, usePeek)).join("");
+      document.getElementById("bac-b-cards").innerHTML = bCards.map((c) => cardHtml(c, usePeek)).join("");
+      document.getElementById("bac-p-score").textContent = usePeek ? "?" : pScore;
+      document.getElementById("bac-b-score").textContent = usePeek ? "?" : bScore;
       document.getElementById("bac-result").textContent = "";
-      document.getElementById("bac-status").textContent = "Kéo từng lá để nặn bài hoặc nhấn 'Mở Hết Bài'!";
       const revBtn = document.getElementById("bac-reveal-btn");
-      revBtn.style.display = "inline-block";
+      revBtn.style.display = usePeek ? "inline-block" : "none";
 
       let settled = false;
       const settleBac = () => {
@@ -108,8 +121,9 @@
         document.getElementById("bac-b-score").textContent = bScore;
         const winner = pScore > bScore ? "player" : bScore > pScore ? "banker" : "tie";
         let payout = 0;
-        if (winner === betSide) payout = winner === "player" ? wager * 2 : winner === "banker" ? Math.floor(wager * 1.95) : wager * 9;
-        else if (winner === "tie" && betSide !== "tie") payout = wager;
+        if (winner === "player") payout = bacBets.player * 2;
+        else if (winner === "banker") payout = Math.floor(bacBets.banker * 1.95);
+        else payout = bacBets.tie * 9 + bacBets.player + bacBets.banker;
 
         Hub.win(payout);
         const net = payout - wager;
@@ -117,19 +131,18 @@
         Hub.recordRound("baccarat", wager, payout, `${winner.toUpperCase()} (${pScore} vs ${bScore})`, badge, winner);
         if (net >= 50000) Hub.sendComment(`Baccarat về ${winner.toUpperCase()} (${pScore}-${bScore}), thắng +${Hub.fmt(net)} xu!`, true, "baccarat");
         document.getElementById("bac-result").innerHTML = `${winner.toUpperCase()} (${pScore} vs ${bScore}) · ${net >= 0 ? `<span style="color:var(--green)">+${Hub.fmt(net)} xu</span>` : `<span style="color:var(--tai)">${Hub.fmt(net)} xu</span>`}`;
-        document.getElementById("bac-status").textContent = net > 0 ? "Chúc mừng bạn thắng!" : "Sẵn sàng ván mới!";
+        document.getElementById("bac-status").textContent = "Đặt cược cho phiên mới!";
         Hub.playBeep(net > 0 ? 920 : 280, 0.12);
+        bacBets = { player: 0, tie: 0, banker: 0 }; syncBac();
         busy = false;
       };
-      revBtn.onclick = () => {
-        root.querySelectorAll(".peek-cover").forEach((c) => c.classList.add("revealed"));
-        settleBac();
-      };
+      if (!usePeek) { settleBac(); return; }
+      document.getElementById("bac-status").textContent = "Kéo từng lá cả 2 bên để nặn bài!";
+      revBtn.onclick = () => { root.querySelectorAll(".peek-cover").forEach((c) => c.classList.add("revealed")); settleBac(); };
       Hub.attachPeek(root, settleBac);
     }
-    document.getElementById("bac-deal-btn").onclick = () => runBaccarat(false);
     Hub.autoHandlers.baccarat = {
-      roll: () => runBaccarat(true),
+      roll: () => runBaccarat(),
       reveal: () => { const b = document.getElementById("bac-reveal-btn"); if (b && b.style.display !== "none") b.click(); },
     };
   }
@@ -287,10 +300,9 @@
       <section class="bc-grid">${FACES.map((f) => `<div class="sub-card" data-bc="${f.id}"><div style="font-size:28px">${f.icon}</div><div class="sub-title">${f.name}</div><div class="sub-amt" id="bc-amt-${f.id}">Cược: 0</div></div>`).join("")}</section>
       <section class="controls">
         <div class="chips">${chipButtonsHtml("data-bcval")}</div>
-        <div class="actions"><button class="btn btn-gold" id="bc-roll">Lắc Bầu Cua</button></div>
       </section>`;
 
-    const lid = document.getElementById("bc-lid"), bowl = document.getElementById("bc-bowl"), rollBtn = document.getElementById("bc-roll");
+    const lid = document.getElementById("bc-lid"), bowl = document.getElementById("bc-bowl");
     const syncBC = () => FACES.forEach((f) => { document.getElementById(`bc-amt-${f.id}`).textContent = `Cược: ${Hub.fmt(bcBets[f.id])}`; root.querySelector(`[data-bc="${f.id}"]`).classList.toggle("active", bcBets[f.id] > 0); });
     root.querySelectorAll("[data-bcval]").forEach((btn) => (btn.onclick = () => { root.querySelectorAll("[data-bcval]").forEach((b) => b.classList.remove("selected")); btn.classList.add("selected"); chip = btn.dataset.bcval === "allin" ? "allin" : Number(btn.dataset.bcval); }));
     root.querySelectorAll("[data-bc]").forEach((c) => (c.onclick = () => {
@@ -303,7 +315,7 @@
     function openBC() {
       if (phase !== "covered") return;
       lid.classList.remove("dragging"); lid.style.transform = ""; lid.classList.add("open");
-      phase = "betting"; rollBtn.textContent = "Lắc Bầu Cua";
+      phase = "betting";
       const total = Object.values(bcBets).reduce((a, b) => a + b, 0);
       let payout = 0; const counts = {}; pendingRes.forEach((f) => (counts[f.id] = (counts[f.id] || 0) + 1));
       for (const [id, hits] of Object.entries(counts)) if (bcBets[id] > 0) payout += bcBets[id] * (hits + 1);
@@ -311,30 +323,30 @@
       const net = payout - total;
       Hub.recordRound("baucua", total, payout, pendingRes.map((f) => f.name).join("-"), pendingRes.map((f) => f.icon).join(""), net >= 0 ? "win" : "lose");
       document.getElementById("bc-result").innerHTML = `${pendingRes.map((f) => f.name).join(" · ")} · ${net >= 0 ? `<span style="color:var(--green)">+${Hub.fmt(net)} xu</span>` : `<span style="color:var(--tai)">${Hub.fmt(net)} xu</span>`}`;
-      document.getElementById("bc-status").textContent = net > 0 ? "Chúc mừng bạn thắng Bầu Cua!" : "Sẵn sàng ván mới!";
+      document.getElementById("bc-status").textContent = "Đặt cược cho phiên mới!";
       Hub.playBeep(net > 0 ? 920 : 260, 0.12);
       bcBets = {nai:0,bau:0,ga:0,ca:0,cua:0,tom:0}; syncBC();
     }
 
-    function runBC(allowEmpty = false) {
+    function runBC() {
       if (phase === "covered") { openBC(); return; }
       if (phase !== "betting") return;
-      const total = Object.values(bcBets).reduce((a, b) => a + b, 0);
-      if (!allowEmpty && total === 0) return;
-      phase = "shaking"; rollBtn.disabled = true; lid.classList.remove("open"); bowl.classList.add("shaking");
+      phase = "shaking";
+      if (Hub.isPeekEnabled()) lid.classList.remove("open");
+      bowl.classList.add("shaking");
       document.querySelectorAll("#bc-dice .bc-die").forEach((d) => d.classList.add("spinning"));
       document.getElementById("bc-status").textContent = "Đang lắc Bầu Cua...";
       pendingRes = [0,1,2].map(() => FACES[Math.floor(Math.random() * 6)]);
       setTimeout(() => {
         bowl.classList.remove("shaking");
         document.getElementById("bc-dice").innerHTML = pendingRes.map((f) => `<div class="bc-die">${f.icon}</div>`).join("");
-        phase = "covered"; lid.style.transform = ""; rollBtn.disabled = false; rollBtn.textContent = "Mở Bát";
-        document.getElementById("bc-status").textContent = "Kéo nắp bát để nặn (tự mở khi hết giờ)!";
+        phase = "covered"; lid.style.transform = "";
+        if (!Hub.isPeekEnabled()) openBC();
+        else document.getElementById("bc-status").textContent = "Kéo nắp bát để nặn (tự mở khi hết 6s)!";
       }, 900);
     }
 
-    rollBtn.onclick = () => runBC(false);
-    Hub.autoHandlers.baucua = { roll: () => runBC(true), reveal: openBC };
+    Hub.autoHandlers.baucua = { roll: runBC, reveal: openBC };
 
     let drag = null;
     lid.addEventListener("pointerdown", (e) => { if (phase !== "covered") return; drag = { x: e.clientX, y: e.clientY }; lid.classList.add("dragging"); lid.setPointerCapture(e.pointerId); });
@@ -346,47 +358,55 @@
   /* 5. VÒNG QUAY */
   function initWheel() {
     const root = document.getElementById("view-wheel");
-    let pick = "red", betAmt = 5000, spinning = false, angle = 0;
+    let betAmt = 5000, spinning = false, angle = 0;
+    let whBets = { red: 0, green: 0, black: 0 };
     root.innerHTML = `
       <section class="stage">
-        <div class="status-banner" id="wh-status">Chọn Đỏ (1:1), Đen (1:1) hoặc Xanh 0 (1:14) rồi Quay!</div>
+        <div class="status-banner" id="wh-status">Chọn Đỏ (1:1), Đen (1:1) hoặc Xanh 0 (1:14) — Tự quay khi hết 30s!</div>
         <div class="wh-wrap"><div class="wh-pointer">▼</div><div class="wh-disc" id="wh-disc"></div></div>
         <div class="result-readout" id="wh-result"></div>
       </section>
       <section class="sub-board">
-        <div class="sub-card active" data-wh="red"><div class="sub-title" style="color:var(--tai)">ĐỎ</div><div class="sub-odd">Thưởng 1:1</div></div>
-        <div class="sub-card" data-wh="green"><div class="sub-title" style="color:var(--green)">XANH (0)</div><div class="sub-odd">Thưởng 1:14</div></div>
-        <div class="sub-card" data-wh="black"><div class="sub-title">ĐEN</div><div class="sub-odd">Thưởng 1:1</div></div>
+        <div class="sub-card" data-wh="red"><div class="sub-title" style="color:var(--tai)">ĐỎ</div><div class="sub-odd">Thưởng 1:1</div><div class="sub-amt" id="wh-amt-red">Cược: 0</div></div>
+        <div class="sub-card" data-wh="green"><div class="sub-title" style="color:var(--green)">XANH (0)</div><div class="sub-odd">Thưởng 1:14</div><div class="sub-amt" id="wh-amt-green">Cược: 0</div></div>
+        <div class="sub-card" data-wh="black"><div class="sub-title">ĐEN</div><div class="sub-odd">Thưởng 1:1</div><div class="sub-amt" id="wh-amt-black">Cược: 0</div></div>
       </section>
       <section class="controls">
         <div class="chips">${chipButtonsHtml("data-wval")}</div>
-        <div class="actions"><button class="btn btn-gold" id="wh-spin">Quay Ngay</button></div>
       </section>`;
 
-    root.querySelectorAll("[data-wh]").forEach((el) => (el.onclick = () => { if (spinning) return; root.querySelectorAll("[data-wh]").forEach((x) => x.classList.remove("active")); el.classList.add("active"); pick = el.dataset.wh; }));
-    root.querySelectorAll("[data-wval]").forEach((btn) => (btn.onclick = () => { root.querySelectorAll("[data-wval]").forEach((b) => b.classList.remove("selected")); btn.classList.add("selected"); betAmt = btn.dataset.wval === "allin" ? "allin" : Number(btn.dataset.wval); }));
-    function runWheel(allowEmpty = false) {
+    const syncWH = () => ["red", "green", "black"].forEach((k) => {
+      document.getElementById(`wh-amt-${k}`).textContent = `Cược: ${Hub.fmt(whBets[k])}`;
+      root.querySelector(`[data-wh="${k}"]`).classList.toggle("active", whBets[k] > 0);
+    });
+    root.querySelectorAll("[data-wh]").forEach((el) => (el.onclick = () => {
       if (spinning) return;
-      const wager = allowEmpty ? 0 : (betAmt === "allin" ? Hub.getBalance() : betAmt);
-      if (!allowEmpty && (wager <= 0 || !Hub.spend(wager))) { document.getElementById("wh-status").textContent = "Không đủ xu!"; return; }
+      const amt = betAmt === "allin" ? Hub.getBalance() : betAmt;
+      if (amt <= 0 || !Hub.spend(amt)) return;
+      whBets[el.dataset.wh] += amt; Hub.playBeep(740, 0.04); syncWH();
+    }));
+    root.querySelectorAll("[data-wval]").forEach((btn) => (btn.onclick = () => { root.querySelectorAll("[data-wval]").forEach((b) => b.classList.remove("selected")); btn.classList.add("selected"); betAmt = btn.dataset.wval === "allin" ? "allin" : Number(btn.dataset.wval); }));
+    function runWheel() {
+      if (spinning) return;
       spinning = true;
+      const wager = whBets.red + whBets.green + whBets.black;
       const slot = Math.floor(Math.random() * 15), outcome = slot === 0 ? "green" : slot % 2 === 1 ? "red" : "black";
       const segAngle = 360 / 15;
       angle += 1080 + (360 - (slot * segAngle + segAngle / 2));
       document.getElementById("wh-disc").style.transform = `rotate(${angle}deg)`;
       setTimeout(() => {
         spinning = false;
-        const payout = outcome === pick ? (outcome === "green" ? wager * 15 : wager * 2) : 0;
+        const payout = outcome === "green" ? whBets.green * 15 : whBets[outcome] * 2;
         Hub.win(payout);
         const net = payout - wager;
         const badge = outcome === "green" ? "0" : outcome === "red" ? "Đ" : "X";
         Hub.recordRound("wheel", wager, payout, `Về ô ${outcome}`, badge, outcome);
         document.getElementById("wh-result").innerHTML = `Về ô: <strong>${outcome.toUpperCase()}</strong> · ${net >= 0 ? `<span style="color:var(--green)">+${Hub.fmt(net)} xu</span>` : `<span style="color:var(--tai)">${Hub.fmt(net)} xu</span>`}`;
         Hub.playBeep(net > 0 ? 920 : 250, 0.14);
+        whBets = { red: 0, green: 0, black: 0 }; syncWH();
       }, 1850);
     }
-    document.getElementById("wh-spin").onclick = () => runWheel(false);
-    Hub.autoHandlers.wheel = { roll: () => runWheel(true) };
+    Hub.autoHandlers.wheel = { roll: runWheel };
   }
 
   /* 6. XÓC ĐĨA (4 ĐỒNG XU + NẶN BÁT) */
@@ -419,10 +439,9 @@
       </section>
       <section class="controls">
         <div class="chips">${chipButtonsHtml("data-xval")}</div>
-        <div class="actions"><button class="btn btn-gold" id="xd-roll">Xóc Đĩa</button></div>
       </section>`;
 
-    const lid = document.getElementById("xd-lid"), bowl = document.getElementById("xd-bowl"), rollBtn = document.getElementById("xd-roll");
+    const lid = document.getElementById("xd-lid"), bowl = document.getElementById("xd-bowl");
     const syncXD = () => Object.keys(xdBets).forEach((k) => {
       document.getElementById(`xd-amt-${k}`).textContent = (k === "chan" || k === "le" ? "Cược: " : "") + Hub.fmt(xdBets[k]);
       root.querySelector(`[data-xd="${k}"]`).classList.toggle("active", xdBets[k] > 0);
@@ -443,25 +462,26 @@
       xdBets[k] += amt; Hub.playBeep(740, 0.04); syncXD();
     }));
 
-    function runXD(allowEmpty = false) {
+    function runXD() {
       if (phase === "covered") { openXD(); return; }
       if (phase !== "betting") return;
-      const total = Object.values(xdBets).reduce((a, b) => a + b, 0);
-      if (!allowEmpty && total === 0) { document.getElementById("xd-status").textContent = "Hãy đặt ít nhất 1 cửa!"; return; }
-      phase = "shaking"; rollBtn.disabled = true; lid.classList.remove("open"); bowl.classList.add("shaking");
+      phase = "shaking";
+      if (Hub.isPeekEnabled()) lid.classList.remove("open");
+      bowl.classList.add("shaking");
       pendingCoins = [0, 1, 2, 3].map(() => (Math.random() < 0.5 ? 0 : 1));
       setTimeout(() => {
         bowl.classList.remove("shaking");
         document.getElementById("xd-coins").innerHTML = pendingCoins.map((c) => `<div class="xd-coin ${c ? "red" : "white"}"></div>`).join("");
-        phase = "covered"; lid.style.transform = ""; rollBtn.disabled = false; rollBtn.textContent = "Mở Bát";
-        document.getElementById("xd-status").textContent = "Kéo nắp bát để nặn (tự mở khi hết giờ)!";
+        phase = "covered"; lid.style.transform = "";
+        if (!Hub.isPeekEnabled()) openXD();
+        else document.getElementById("xd-status").textContent = "Kéo nắp bát để nặn (tự mở khi hết 6s)!";
       }, 850);
     }
 
     function openXD() {
       if (phase !== "covered") return;
       lid.classList.remove("dragging"); lid.style.transform = ""; lid.classList.add("open");
-      phase = "betting"; rollBtn.textContent = "Xóc Đĩa";
+      phase = "betting";
       const reds = pendingCoins.filter((x) => x === 1).length;
       const isEven = reds % 2 === 0;
       let payout = 0;
@@ -476,12 +496,12 @@
       const label = `${reds} Đỏ ${4 - reds} Trắng (${isEven ? "Chẵn" : "Lẻ"})`;
       Hub.recordRound("xocdia", total, payout, label, isEven ? "C" : "L", isEven ? "chan" : "le");
       document.getElementById("xd-result").innerHTML = `${label} · ${net >= 0 ? `<span style="color:var(--green)">+${Hub.fmt(net)} xu</span>` : `<span style="color:var(--tai)">${Hub.fmt(net)} xu</span>`}`;
+      document.getElementById("xd-status").textContent = "Đặt cược cho phiên mới!";
       Hub.playBeep(net > 0 ? 920 : 260, 0.12);
       xdBets = { chan: 0, le: 0, red4: 0, white4: 0, red3: 0, white3: 0 }; syncXD();
     }
 
-    rollBtn.onclick = () => runXD(false);
-    Hub.autoHandlers.xocdia = { roll: () => runXD(true), reveal: openXD };
+    Hub.autoHandlers.xocdia = { roll: runXD, reveal: openXD };
 
     let drag = null;
     lid.addEventListener("pointerdown", (e) => { if (phase !== "covered") return; drag = { x: e.clientX, y: e.clientY }; lid.classList.add("dragging"); lid.setPointerCapture(e.pointerId); });
@@ -493,60 +513,80 @@
   /* 7. RỒNG HỔ */
   function initRongHo() {
     const root = document.getElementById("view-rongho");
-    let pick = "rong", betAmt = 5000;
+    let betAmt = 5000, busy = false;
+    let rhBets = { rong: 0, tie: 0, ho: 0 };
     root.innerHTML = `
       <section class="stage">
-        <div class="status-banner" id="rh-status">Chọn Rồng (1:1), Hổ (1:1) hoặc Hòa (1:8) và Chia Bài</div>
+        <div class="status-banner" id="rh-status">Đặt cược Rồng / Hổ / Hòa — Tự chia bài khi hết 30s!</div>
         <div class="bac-table">
           <div class="bac-hand"><div class="bac-label" style="color:var(--tai)">🐉 RỒNG</div><div class="card-row" id="rh-r"></div></div>
           <div class="bac-hand"><div class="bac-label" style="color:var(--xiu)">🐯 HỔ</div><div class="card-row" id="rh-h"></div></div>
         </div>
+        <div class="actions"><button class="btn" id="rh-reveal" style="display:none;">Mở Bài</button></div>
         <div class="result-readout" id="rh-result"></div>
       </section>
       <section class="sub-board">
-        <div class="sub-card active" data-rh="rong"><div class="sub-title" style="color:var(--tai)">RỒNG</div><div class="sub-odd">1:1</div></div>
-        <div class="sub-card" data-rh="tie"><div class="sub-title" style="color:var(--green)">HÒA</div><div class="sub-odd">1:8</div></div>
-        <div class="sub-card" data-rh="ho"><div class="sub-title" style="color:var(--xiu)">HỔ</div><div class="sub-odd">1:1</div></div>
+        <div class="sub-card" data-rh="rong"><div class="sub-title" style="color:var(--tai)">RỒNG</div><div class="sub-odd">1:1</div><div class="sub-amt" id="rh-amt-rong">Cược: 0</div></div>
+        <div class="sub-card" data-rh="tie"><div class="sub-title" style="color:var(--green)">HÒA</div><div class="sub-odd">1:8</div><div class="sub-amt" id="rh-amt-tie">Cược: 0</div></div>
+        <div class="sub-card" data-rh="ho"><div class="sub-title" style="color:var(--xiu)">HỔ</div><div class="sub-odd">1:1</div><div class="sub-amt" id="rh-amt-ho">Cược: 0</div></div>
       </section>
       <section class="controls">
         <div class="chips">${chipButtonsHtml("data-rhv")}</div>
-        <div class="actions"><button class="btn" id="rh-reveal" style="display:none;">Mở Bài</button><button class="btn btn-gold" id="rh-deal">Chia Bài</button></div>
       </section>`;
 
-    root.querySelectorAll("[data-rh]").forEach((el) => (el.onclick = () => { root.querySelectorAll("[data-rh]").forEach((x) => x.classList.remove("active")); el.classList.add("active"); pick = el.dataset.rh; }));
+    const syncRH = () => ["rong", "tie", "ho"].forEach((k) => {
+      document.getElementById(`rh-amt-${k}`).textContent = `Cược: ${Hub.fmt(rhBets[k])}`;
+      root.querySelector(`[data-rh="${k}"]`).classList.toggle("active", rhBets[k] > 0);
+    });
+    root.querySelectorAll("[data-rh]").forEach((el) => (el.onclick = () => {
+      if (busy) return;
+      const k = el.dataset.rh;
+      if ((k === "rong" && rhBets.ho > 0) || (k === "ho" && rhBets.rong > 0)) {
+        document.getElementById("rh-status").textContent = "Chỉ được chọn Rồng hoặc Hổ!"; return;
+      }
+      const amt = betAmt === "allin" ? Hub.getBalance() : betAmt;
+      if (amt <= 0 || !Hub.spend(amt)) return;
+      rhBets[k] += amt; Hub.playBeep(740, 0.04); syncRH();
+    }));
     root.querySelectorAll("[data-rhv]").forEach((b) => (b.onclick = () => { root.querySelectorAll("[data-rhv]").forEach((x) => x.classList.remove("selected")); b.classList.add("selected"); betAmt = b.dataset.rhv === "allin" ? "allin" : Number(b.dataset.rhv); }));
     const val = (r) => (r === "A" ? 1 : r === "J" ? 11 : r === "Q" ? 12 : r === "K" ? 13 : Number(r));
 
-    function runRongHo(allowEmpty = false) {
-      const wager = allowEmpty ? 0 : (betAmt === "allin" ? Hub.getBalance() : betAmt);
-      if (!allowEmpty && (wager <= 0 || !Hub.spend(wager))) { document.getElementById("rh-status").textContent = "Không đủ xu!"; return; }
+    function runRongHo() {
+      if (busy) return;
+      busy = true;
+      const wager = rhBets.rong + rhBets.tie + rhBets.ho;
       const deck = createDeck(), cR = deck.pop(), cH = deck.pop();
-      document.getElementById("rh-r").innerHTML = cardHtml(cR, true);
-      document.getElementById("rh-h").innerHTML = cardHtml(cH, true);
+      const usePeek = Hub.isPeekEnabled();
+      document.getElementById("rh-r").innerHTML = cardHtml(cR, usePeek);
+      document.getElementById("rh-h").innerHTML = cardHtml(cH, usePeek);
       document.getElementById("rh-result").textContent = "";
-      document.getElementById("rh-status").textContent = "Kéo lá Rồng & Hổ để nặn bài hoặc nhấn 'Mở Bài'!";
       const revBtn = document.getElementById("rh-reveal");
-      revBtn.style.display = "inline-block";
+      revBtn.style.display = usePeek ? "inline-block" : "none";
       let done = false;
       const settleRH = () => {
         if (done) return; done = true; revBtn.style.display = "none";
         const vR = val(cR.rank), vH = val(cH.rank);
         const winSide = vR > vH ? "rong" : vH > vR ? "ho" : "tie";
         let payout = 0;
-        if (winSide === pick) payout = winSide === "tie" ? wager * 9 : wager * 2;
-        else if (winSide === "tie") payout = Math.floor(wager * 0.5);
+        if (winSide === "rong") payout = rhBets.rong * 2;
+        else if (winSide === "ho") payout = rhBets.ho * 2;
+        else payout = rhBets.tie * 9 + Math.floor((rhBets.rong + rhBets.ho) * 0.5);
         Hub.win(payout);
         const net = payout - wager;
         Hub.recordRound("rongho", wager, payout, `${cR.rank} vs ${cH.rank}`, winSide === "rong" ? "R" : winSide === "ho" ? "H" : "Hòa", winSide);
         document.getElementById("rh-result").innerHTML = `${winSide.toUpperCase()} (${cR.rank} vs ${cH.rank}) · ${net >= 0 ? `<span style="color:var(--green)">+${Hub.fmt(net)} xu</span>` : `<span style="color:var(--tai)">${Hub.fmt(net)} xu</span>`}`;
+        document.getElementById("rh-status").textContent = "Đặt cược cho phiên mới!";
         Hub.playBeep(net > 0 ? 920 : 260, 0.12);
+        rhBets = { rong: 0, tie: 0, ho: 0 }; syncRH();
+        busy = false;
       };
+      if (!usePeek) { settleRH(); return; }
+      document.getElementById("rh-status").textContent = "Kéo lá Rồng & Hổ để nặn bài!";
       revBtn.onclick = () => { root.querySelectorAll(".peek-cover").forEach((c) => c.classList.add("revealed")); settleRH(); };
       Hub.attachPeek(root, settleRH);
     }
-    document.getElementById("rh-deal").onclick = () => runRongHo(false);
     Hub.autoHandlers.rongho = {
-      roll: () => runRongHo(true),
+      roll: runRongHo,
       reveal: () => { const b = document.getElementById("rh-reveal"); if (b && b.style.display !== "none") b.click(); },
     };
   }
@@ -602,11 +642,12 @@
       if (ps <= 21) {
         while (score(dHand) < 17) dHand.push(deck.pop());
       }
-      document.getElementById("bj-p-cards").innerHTML = pHand.map((c, idx) => cardHtml(c, idx === pHand.length - 1)).join("");
-      document.getElementById("bj-d-cards").innerHTML = dHand.map((c, idx) => cardHtml(c, idx > 0)).join("");
-      document.getElementById("bj-d-score").textContent = "?";
-      document.getElementById("bj-status").textContent = "Kéo bài cả 2 bên để nặn!";
-      Hub.attachPeek(root, () => {
+      const usePeek = Hub.isPeekEnabled();
+      document.getElementById("bj-p-cards").innerHTML = pHand.map((c, idx) => cardHtml(c, usePeek && idx === pHand.length - 1)).join("");
+      document.getElementById("bj-d-cards").innerHTML = dHand.map((c, idx) => cardHtml(c, usePeek && idx > 0)).join("");
+      document.getElementById("bj-d-score").textContent = usePeek ? "?" : score(dHand);
+      document.getElementById("bj-status").textContent = usePeek ? "Kéo bài cả 2 bên để nặn!" : "Đã mở bài!";
+      const settleBJ = () => {
         renderBJ(true);
         const ds = score(dHand);
         let payout = 0, msg = "Thua";
@@ -621,7 +662,9 @@
         document.getElementById("bj-result").innerHTML = `<strong>${msg}</strong> (${ps} vs ${ds}) · ${net >= 0 ? `<span style="color:var(--green)">+${Hub.fmt(net)} xu</span>` : `<span style="color:var(--tai)">${Hub.fmt(net)} xu</span>`}`;
         document.getElementById("bj-status").textContent = net > 0 ? "Chúc mừng bạn thắng!" : "Sẵn sàng ván mới!";
         Hub.playBeep(net > 0 ? 920 : 250, 0.12);
-      });
+      };
+      if (!usePeek) settleBJ();
+      else Hub.attachPeek(root, settleBJ);
     }
 
     document.getElementById("bj-deal").onclick = () => {
@@ -968,4 +1011,49 @@
 
   initBaccarat(); initAviator(); initPoker(); initBauCua(); initWheel();
   initXocDia(); initRongHo(); initBlackjack(); initMines(); initCarrier();
+
+  // Ensure Aviator, Poker, Blackjack, Mines, Carrier also auto-run live sessions when idle
+  Hub.autoHandlers.aviator = {
+    roll: () => {
+      const r = Math.random();
+      const crash = r < 0.05 ? 1.0 : Math.max(1.05, Math.min(18, Math.floor((0.96 / (1 - r)) * 100) / 100));
+      Hub.recordRound("aviator", 0, 0, `Phiên tự động nổ ở ${crash.toFixed(2)}x`, `${crash.toFixed(1)}x`, crash >= 2 ? "win" : "lose");
+    },
+  };
+  Hub.autoHandlers.poker = {
+    roll: () => {
+      const btn = document.getElementById("pk-btn");
+      if (btn && btn.textContent.includes("Chia")) {
+        const hands = [["Đôi J+", "J+", "win"], ["Hai Đôi", "2P", "win"], ["Không thưởng", "0", "lose"], ["Sám Cô", "3K", "win"]];
+        const pick = hands[Math.floor(Math.random() * hands.length)];
+        Hub.recordRound("poker", 0, 0, `Phiên tự động: ${pick[0]}`, pick[1], pick[2]);
+      }
+    },
+  };
+  Hub.autoHandlers.blackjack = {
+    roll: () => {
+      const dealBtn = document.getElementById("bj-deal");
+      if (dealBtn && !dealBtn.disabled) {
+        const ps = 17 + Math.floor(Math.random() * 5);
+        Hub.recordRound("blackjack", 0, 0, `Phiên tự động (${ps} điểm)`, String(ps), ps >= 19 ? "win" : "lose");
+      }
+    },
+  };
+  Hub.autoHandlers.mines = {
+    roll: () => {
+      const m = (1.2 + Math.random() * 2.5).toFixed(2);
+      const win = Math.random() > 0.35;
+      Hub.recordRound("mines", 0, 0, win ? `Phiên tự động (${m}x)` : "Phiên tự động dính bom", win ? `${m}x` : "💣", win ? "win" : "lose");
+    },
+  };
+  Hub.autoHandlers.carrier = {
+    roll: () => {
+      const startBtn = document.getElementById("cr-start");
+      if (startBtn && !startBtn.disabled) {
+        const win = Math.random() > 0.35;
+        const m = (1.5 + Math.random() * 2.5).toFixed(1);
+        Hub.recordRound("carrier", 0, 0, win ? `Tự động hạ cánh ${m}x` : "Tự động rơi biển", win ? `${m}x` : "💥", win ? "win" : "lose");
+      }
+    },
+  };
 })();
