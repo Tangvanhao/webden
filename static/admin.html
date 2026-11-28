@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Chỉnh Cầu — Luxury Game Hub</title>
+  <style>
+    :root {
+      --bg: #0b0305;
+      --panel: rgba(28, 11, 14, 0.94);
+      --panel-2: rgba(44, 18, 22, 0.94);
+      --border: rgba(245, 185, 66, 0.35);
+      --gold: #f5b942;
+      --tai: #ef4444;
+      --xiu: #3b82f6;
+      --green: #10b981;
+      --text: #fef3c7;
+      --muted: #d6b89c;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      background: radial-gradient(circle at top, #2a070a, var(--bg) 70%);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 20px 14px 40px;
+      display: flex;
+      justify-content: center;
+    }
+    .wrap { width: 100%; max-width: 1020px; display: flex; flex-direction: column; gap: 16px; }
+    .card {
+      background: var(--panel);
+      border: 1.5px solid var(--border);
+      border-radius: 16px;
+      padding: 16px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.55);
+    }
+    .top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; }
+    h1 { font-size: 20px; color: var(--gold); }
+    h2 { font-size: 16px; color: var(--gold); }
+    .btn {
+      background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+      padding: 8px 14px; border-radius: 10px; font-weight: 700; font-size: 13px; cursor: pointer;
+      text-decoration: none; display: inline-flex; align-items: center; gap: 6px;
+    }
+    .btn:hover { border-color: var(--gold); }
+    .btn-gold { background: linear-gradient(180deg, #fcd34d, #d97706); color: #111827; border: none; }
+    .btn-tai { background: #dc2626; color: #fff; border: none; }
+    .btn-xiu { background: #2563eb; color: #fff; border: none; }
+    .btn-green { background: #059669; color: #fff; border: none; }
+    input, select {
+      background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+      padding: 8px 11px; border-radius: 9px; font-size: 13px; outline: none;
+    }
+    .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .roadmap { display: flex; flex-wrap: wrap; gap: 7px; }
+    .dot {
+      min-width: 28px; height: 28px; padding: 0 6px; border-radius: 999px;
+      display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; color: #fff;
+    }
+    .dot.T, .dot.banker, .dot.red, .dot.lose, .dot.rong { background: var(--tai); }
+    .dot.X, .dot.player, .dot.ho { background: var(--xiu); }
+    .dot.B, .dot.tie, .dot.win, .dot.green, .dot.chan { background: var(--green); }
+    .dot.le { background: #8b5cf6; }
+    .dot.black { background: #374151; }
+    table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    th, td { padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.08); text-align: left; }
+    th { color: var(--gold); }
+    @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="top">
+        <div>
+          <h1>⚙️ ADMIN PANEL — CHỈNH CẦU ĐỒNG BỘ</h1>
+          <div style="font-size:12.5px;color:var(--muted);margin-top:3px;">
+            Phiên hiện tại: <strong style="color:var(--gold)">#<span id="cur-sid">...</span></strong> (<span id="cur-timer">...</span>) · Phiên kế tiếp: <strong style="color:var(--green)">#<span id="next-sid">...</span></strong>
+          </div>
+        </div>
+        <div class="row">
+          <a href="/" class="btn">⬅️ Về Trang Game</a>
+          <button class="btn btn-gold" id="admin-logout-btn" style="display:none;">Đăng xuất Admin</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Login Card -->
+    <div class="card" id="login-card">
+      <h2>Đăng nhập quyền Admin</h2>
+      <form id="login-form" class="row">
+        <input type="text" id="adm-user" value="admin" placeholder="Tên đăng nhập" required />
+        <input type="password" id="adm-pass" value="admin123" placeholder="Mật khẩu" required />
+        <button type="submit" class="btn btn-gold">Đăng nhập Admin</button>
+      </form>
+      <div id="login-msg" style="font-size:12.5px;color:#fca5a5;">Tài khoản mặc định: <strong>admin</strong> / <strong>admin123</strong></div>
+    </div>
+
+    <!-- Admin Controls -->
+    <div id="admin-body" style="display:none;flex-direction:column;gap:16px;">
+      <div class="card">
+        <div class="top">
+          <h2>1. Ép / Chỉnh Kết Quả Phiên</h2>
+          <div class="row">
+            <label style="font-size:13px;">Chọn Trò:</label>
+            <select id="game-select">
+              <option value="taixiu">🎲 Tài Xỉu</option>
+              <option value="sicbo">💠 Sicbo Tài Phú</option>
+              <option value="xocdia">🪙 Xóc Đĩa</option>
+              <option value="baccarat">🃏 Baccarat</option>
+              <option value="rongho">🐉 Rồng Hổ</option>
+              <option value="wheel">🎡 Vòng Quay</option>
+              <option value="aviator">✈️ Lái Máy Bay (Phụng)</option>
+              <option value="baucua">🦀 Bầu Cua</option>
+            </select>
+            <label style="font-size:13px;">Số Phiên:</label>
+            <input type="number" id="target-sid" style="width:110px;" />
+            <button class="btn" id="use-cur-sid">Phiên hiện tại</button>
+            <button class="btn" id="use-next-sid">Phiên tiếp theo</button>
+          </div>
+        </div>
+
+        <div id="quick-presets" class="row"></div>
+
+        <div id="custom-dice-box" class="row">
+          <span style="font-size:13px;color:var(--muted);">Chỉnh 3 xúc xắc cụ thể:</span>
+          <input type="number" id="d1" min="1" max="6" value="4" style="width:62px;" />
+          <input type="number" id="d2" min="1" max="6" value="5" style="width:62px;" />
+          <input type="number" id="d3" min="1" max="6" value="6" style="width:62px;" />
+          <button class="btn btn-gold" id="save-dice-btn">Lưu 3 Xúc Xắc</button>
+        </div>
+
+        <div id="custom-av-box" class="row" style="display:none;">
+          <span style="font-size:13px;color:var(--muted);">Chỉnh điểm nổ Aviator (x):</span>
+          <input type="number" id="av-crash" step="0.01" min="1.00" max="100" value="8.88" style="width:100px;" />
+          <button class="btn btn-gold" id="save-av-btn">Lưu Hệ Số Nổ</button>
+        </div>
+
+        <div id="preset-msg" style="font-size:13px;color:var(--green);"></div>
+      </div>
+
+      <div class="card">
+        <h2>2. Cài Chuỗi Cầu Nhiều Phiên Liên Tiếp (Từ Phiên #<span id="batch-start-lbl">...</span>)</h2>
+        <div style="font-size:12.5px;color:var(--muted);" id="batch-hint">
+          Nhập chuỗi cách nhau bằng dấu phẩy (vd Tài Xỉu/Sicbo: <code>T,T,T,X,X,T,B</code> | Xóc Đĩa: <code>C,L,C,red4</code> | Baccarat: <code>P,B,P,H</code> | Aviator: <code>1.2, 3.5, 12.0</code>)
+        </div>
+        <div class="row">
+          <input type="text" id="batch-seq" style="flex:1;min-width:240px;" placeholder="T, T, T, X, T, X" />
+          <button class="btn btn-gold" id="save-batch-btn">Áp Dụng Chuỗi Cầu</button>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <div class="top">
+            <h2>Cầu Đang Hiển Thị</h2>
+            <button class="btn btn-tai" id="clear-cau-btn" style="padding:5px 10px;font-size:12px;">Xóa Cầu Trò Này</button>
+          </div>
+          <div class="roadmap" id="cur-roadmap"></div>
+          <h2 style="margin-top:8px;">Phiên Đã Cài Trước (Global)</h2>
+          <div style="max-height:220px;overflow-y:auto;">
+            <table><thead><tr><th>Phiên</th><th>Kết quả</th><th>Mã</th></tr></thead><tbody id="preset-tbody"></tbody></table>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="top">
+            <h2>Quản Lý Người Chơi &amp; Xu</h2>
+            <button class="btn" id="refresh-users-btn" style="padding:5px 10px;font-size:12px;">Làm mới</button>
+          </div>
+          <div style="max-height:290px;overflow-y:auto;">
+            <table><thead><tr><th>User</th><th>Tên</th><th>Số Xu</th><th>Chỉnh</th></tr></thead><tbody id="users-tbody"></tbody></table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let token = localStorage.getItem("hub_token") || "";
+    const CYCLE = 36;
+    function computeSyncSession() {
+      const nowSec = Math.floor(Date.now() / 1000);
+      const id = 1000 + (Math.floor(nowSec / CYCLE) % 90000);
+      const rem = CYCLE - (nowSec % CYCLE);
+      if (rem > 6) return { id, phase: "betting", sec: rem - 6 };
+      return { id, phase: "cooldown", sec: rem };
+    }
+
+    setInterval(() => {
+      const s = computeSyncSession();
+      document.getElementById("cur-sid").textContent = s.id;
+      document.getElementById("next-sid").textContent = s.id + 1;
+      document.getElementById("cur-timer").textContent = s.phase === "betting" ? `Nhận cược ${s.sec}s` : `Mở thưởng ${s.sec}s`;
+    }, 500);
+
+    async function api(path, opts = {}) {
+      const headers = Object.assign({ "Content-Type": "application/json" }, opts.headers || {});
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      const res = await fetch(path, { ...opts, headers });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Lỗi máy chủ");
+      return data;
+    }
+
+    const gameSel = document.getElementById("game-select");
+    const targetSid = document.getElementById("target-sid");
+    const syncSidToCurrent = () => {
+      const s = computeSyncSession();
+      targetSid.value = s.phase === "betting" ? s.id : s.id + 1;
+      document.getElementById("batch-start-lbl").textContent = targetSid.value;
+    };
+    syncSidToCurrent();
+    document.getElementById("use-cur-sid").onclick = () => { targetSid.value = computeSyncSession().id; document.getElementById("batch-start-lbl").textContent = targetSid.value; };
+    document.getElementById("use-next-sid").onclick = () => { targetSid.value = computeSyncSession().id + 1; document.getElementById("batch-start-lbl").textContent = targetSid.value; };
+    targetSid.oninput = () => { document.getElementById("batch-start-lbl").textContent = targetSid.value; };
+
+    const PRESET_BTNS = {
+      taixiu: [["Ép TÀI", "tai", "btn-tai"], ["Ép XỈU", "xiu", "btn-xiu"], ["Ép BÃO", "bao", "btn-gold"]],
+      sicbo: [["Ép TÀI", "tai", "btn-tai"], ["Ép XỈU", "xiu", "btn-xiu"], ["Ép BÃO", "bao", "btn-gold"]],
+      xocdia: [["Ép CHẴN", "chan", "btn-green"], ["Ép LẺ", "le", "btn-tai"], ["4 ĐỎ", "red4", "btn-gold"], ["4 TRẮNG", "white4", "btn"]],
+      baccarat: [["Ép PLAYER", "player", "btn-xiu"], ["Ép BANKER", "banker", "btn-tai"], ["Ép HÒA", "tie", "btn-green"]],
+      rongho: [["Ép RỒNG", "rong", "btn-tai"], ["Ép HỔ", "ho", "btn-xiu"], ["Ép HÒA", "tie", "btn-green"]],
+      wheel: [["Ép ĐỎ", "red", "btn-tai"], ["Ép ĐEN", "black", "btn"], ["Ép XANH (0)", "green", "btn-green"]],
+      aviator: [["Nổ sớm 1.05x", "1.05", "btn-tai"], ["Bay 2.50x", "2.50", "btn-green"], ["Bay 10.00x", "10.00", "btn-gold"]],
+      baucua: [["3 Bầu", "bau", "btn-green"], ["Ngẫu nhiên", "random", "btn"]],
+    };
+
+    function renderQuickButtons() {
+      const g = gameSel.value;
+      document.getElementById("custom-dice-box").style.display = (g === "taixiu" || g === "sicbo") ? "flex" : "none";
+      document.getElementById("custom-av-box").style.display = g === "aviator" ? "flex" : "none";
+      const box = document.getElementById("quick-presets");
+      box.innerHTML = "";
+      for (const [label, mode, cls] of (PRESET_BTNS[g] || [])) {
+        const b = document.createElement("button");
+        b.className = `btn ${cls}`;
+        b.textContent = label;
+        b.onclick = () => applyPreset(g, mode);
+        box.appendChild(b);
+      }
+      loadGameAdminData();
+    }
+    gameSel.onchange = renderQuickButtons;
+
+    async function applyPreset(game, mode, extra = {}) {
+      const sid = Number(targetSid.value);
+      try {
+        const payload = { game, session_id: sid, mode, ...extra };
+        if (game === "aviator" && !extra.crash_at) payload.crash_at = Number(mode);
+        const res = await api("/api/admin/preset", { method: "POST", body: JSON.stringify(payload) });
+        document.getElementById("preset-msg").textContent = `✅ Đã cài Phiên #${sid} (${game}): ${res.summary}`;
+        loadGameAdminData();
+      } catch (e) {
+        document.getElementById("preset-msg").textContent = "❌ " + e.message;
+      }
+    }
+
+    document.getElementById("save-dice-btn").onclick = () => {
+      applyPreset(gameSel.value, "custom", {
+        dice: [Number(document.getElementById("d1").value), Number(document.getElementById("d2").value), Number(document.getElementById("d3").value)],
+      });
+    };
+    document.getElementById("save-av-btn").onclick = () => {
+      applyPreset("aviator", "custom", { crash_at: Number(document.getElementById("av-crash").value) });
+    };
+    document.getElementById("save-batch-btn").onclick = async () => {
+      const g = gameSel.value;
+      const sid = Number(targetSid.value);
+      const seq = document.getElementById("batch-seq").value;
+      try {
+        const res = await api("/api/admin/batch_preset", { method: "POST", body: JSON.stringify({ game: g, start_session_id: sid, sequence: seq }) });
+        document.getElementById("preset-msg").textContent = `✅ Đã cài chuỗi ${res.count} phiên liên tiếp từ #${sid}!`;
+        loadGameAdminData();
+      } catch (e) {
+        document.getElementById("preset-msg").textContent = "❌ " + e.message;
+      }
+    };
+    document.getElementById("clear-cau-btn").onclick = async () => {
+      await api(`/api/admin/clear_history/${gameSel.value}`, { method: "POST" });
+      loadGameAdminData();
+    };
+
+    async function loadGameAdminData() {
+      const g = gameSel.value;
+      try {
+        const [hData, pData] = await Promise.all([api(`/api/game/history/${g}`), api(`/api/admin/presets/${g}`)]);
+        const rm = document.getElementById("cur-roadmap");
+        rm.innerHTML = hData.history.map((it) => `<div class="dot ${it.kind}" title="${it.summary}">${it.badge}</div>`).join("") || "<span style='color:var(--muted)'>Chưa có cầu</span>";
+        document.getElementById("preset-tbody").innerHTML = pData.presets.map((p) => `<tr><td>#${p.session_id}</td><td>${p.summary}</td><td><span class="dot ${p.kind}" style="display:inline-flex">${p.badge}</span></td></tr>`).join("");
+      } catch (_) {}
+    }
+
+    async function loadUsers() {
+      try {
+        const data = await api("/api/admin/users");
+        document.getElementById("users-tbody").innerHTML = data.users.map((u) => `
+          <tr>
+            <td>${u.username}${u.is_admin ? " ⭐" : ""}</td>
+            <td>${u.display_name}</td>
+            <td>${Number(u.balance).toLocaleString("vi-VN")}</td>
+            <td><button class="btn" style="padding:3px 8px;font-size:11px;" onclick="setBal(${u.id}, ${u.balance})">Sửa xu</button></td>
+          </tr>
+        `).join("");
+      } catch (_) {}
+    }
+    window.setBal = async (uid, cur) => {
+      const val = prompt("Nhập số xu mới cho tài khoản:", String(cur));
+      if (val === null) return;
+      await api("/api/admin/user_balance", { method: "POST", body: JSON.stringify({ user_id: uid, balance: Number(val) }) });
+      loadUsers();
+    };
+    document.getElementById("refresh-users-btn").onclick = loadUsers;
+
+    async function checkAdmin() {
+      if (!token) return;
+      try {
+        const data = await api("/api/auth/me");
+        if (data.user && data.user.is_admin) {
+          document.getElementById("login-card").style.display = "none";
+          document.getElementById("admin-body").style.display = "flex";
+          document.getElementById("admin-logout-btn").style.display = "inline-flex";
+          renderQuickButtons();
+          loadUsers();
+        }
+      } catch (_) {}
+    }
+
+    document.getElementById("login-form").onsubmit = async (e) => {
+      e.preventDefault();
+      try {
+        const data = await api("/api/auth/login", {
+          method: "POST",
+          body: JSON.stringify({ username: document.getElementById("adm-user").value, password: document.getElementById("adm-pass").value }),
+        });
+        if (!data.user.is_admin) throw new Error("Tài khoản này không có quyền Admin!");
+        token = data.token;
+        localStorage.setItem("hub_token", token);
+        checkAdmin();
+      } catch (err) {
+        document.getElementById("login-msg").textContent = "❌ " + err.message;
+      }
+    };
+
+    document.getElementById("admin-logout-btn").onclick = () => {
+      token = "";
+      localStorage.removeItem("hub_token");
+      location.reload();
+    };
+
+    checkAdmin();
+  </script>
+</body>
+</html>

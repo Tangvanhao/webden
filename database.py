@@ -45,6 +45,7 @@ def init_db() -> None:
                 total_wagered INTEGER NOT NULL DEFAULT 0,
                 total_payout INTEGER NOT NULL DEFAULT 0,
                 total_rounds INTEGER NOT NULL DEFAULT 0,
+                is_admin INTEGER NOT NULL DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
 
@@ -99,19 +100,31 @@ def init_db() -> None:
             """
         )
 
-        # Ensure session_key column exists if migrating from older DB
+        # Ensure session_key and is_admin columns exist if migrating from older DB
         cols = [r["name"] for r in conn.execute("PRAGMA table_info(game_history)").fetchall()]
         if "session_key" not in cols:
             conn.execute("ALTER TABLE game_history ADD COLUMN session_key TEXT")
             conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_gh_session_key ON game_history(session_key)")
 
-        # Seed default demo account if not exists
+        u_cols = [r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()]
+        if "is_admin" not in u_cols:
+            conn.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
+
+        # Seed default demo account and admin account if not exists
         cur = conn.execute("SELECT id FROM users WHERE username = ?", ("demo",))
         if cur.fetchone() is None:
             conn.execute(
                 "INSERT INTO users (username, display_name, password_hash, balance) VALUES (?, ?, ?, ?)",
                 ("demo", "Cao Thủ Demo", hash_password("123456"), 200000),
             )
+        cur_adm = conn.execute("SELECT id FROM users WHERE username = ?", ("admin",))
+        if cur_adm.fetchone() is None:
+            conn.execute(
+                "INSERT INTO users (username, display_name, password_hash, balance, is_admin) VALUES (?, ?, ?, ?, 1)",
+                ("admin", "Admin Hệ Thống", hash_password("admin123"), 999999999),
+            )
+        else:
+            conn.execute("UPDATE users SET is_admin = 1 WHERE username = ?", ("admin",))
 
         # Seed welcome comment if empty
         cur_c = conn.execute("SELECT COUNT(*) AS cnt FROM comments")
@@ -132,6 +145,7 @@ def user_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
         "total_wagered": row["total_wagered"],
         "total_payout": row["total_payout"],
         "total_rounds": row["total_rounds"],
+        "is_admin": bool(row["is_admin"]) if "is_admin" in row.keys() else False,
     }
 
 

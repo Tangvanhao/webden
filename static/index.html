@@ -1179,6 +1179,7 @@
           <span id="user-name">Khách</span>
         </div>
         <div class="balance-box">$ <span id="balance">100,000</span></div>
+        <a href="/admin" class="btn" id="admin-link-btn" style="display:none;border-color:var(--gold);color:var(--gold);">⚙️ Admin</a>
         <button class="btn btn-purple-pill" id="open-wallet-btn">NẠP / RÚT</button>
         <button class="btn btn-gold-pill" id="open-auth-btn">ĐĂNG NHẬP</button>
         <button class="btn" id="sound-btn">🔊</button>
@@ -1563,6 +1564,8 @@
       const uNameEl = document.getElementById("user-name");
       const avatarEl = document.getElementById("user-avatar");
       const authBtn = document.getElementById("open-auth-btn");
+      const admLink = document.getElementById("admin-link-btn");
+      if (admLink) admLink.style.display = currentUser && currentUser.is_admin ? "inline-flex" : "none";
 
       if (currentUser) {
         uNameEl.textContent = currentUser.display_name;
