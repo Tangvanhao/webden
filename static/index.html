@@ -1179,7 +1179,7 @@
           <span id="user-name">Khách</span>
         </div>
         <div class="balance-box">$ <span id="balance">100,000</span></div>
-        <a href="/admin" class="btn" id="admin-link-btn" style="display:none;border-color:var(--gold);color:var(--gold);">⚙️ Admin</a>
+        <a href="/admin" class="btn" id="admin-link-btn" style="border-color:var(--gold);color:var(--gold);text-decoration:none;">⚙️ Chỉnh Cầu</a>
         <button class="btn btn-purple-pill" id="open-wallet-btn">NẠP / RÚT</button>
         <button class="btn btn-gold-pill" id="open-auth-btn">ĐĂNG NHẬP</button>
         <button class="btn" id="sound-btn">🔊</button>
@@ -1285,6 +1285,11 @@
       </div>
       <div style="width:100%;height:5px;background:var(--panel-2);border-radius:999px;overflow:hidden;">
         <div id="session-progress" style="width:100%;height:100%;background:linear-gradient(90deg,var(--green),var(--gold));transition:width 0.9s linear;"></div>
+      </div>
+      <div id="quick-admin-bar" style="display:none;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;padding-top:6px;border-top:1px dashed rgba(245,185,66,0.35);">
+        <span style="font-size:12px;font-weight:800;color:var(--gold);">⚙️ ADMIN CHỈNH CẦU NHANH (#<span id="qa-sid">1042</span>):</span>
+        <div id="qa-buttons" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;"></div>
+        <span id="qa-status" style="font-size:11.5px;color:var(--green);"></span>
       </div>
     </section>
 
@@ -1564,8 +1569,11 @@
       const uNameEl = document.getElementById("user-name");
       const avatarEl = document.getElementById("user-avatar");
       const authBtn = document.getElementById("open-auth-btn");
-      const admLink = document.getElementById("admin-link-btn");
-      if (admLink) admLink.style.display = currentUser && currentUser.is_admin ? "inline-flex" : "none";
+      const qaBar = document.getElementById("quick-admin-bar");
+      if (qaBar) {
+        qaBar.style.display = currentUser && currentUser.is_admin ? "flex" : "none";
+        if (currentUser && currentUser.is_admin && typeof renderQuickAdminBtns === "function") renderQuickAdminBtns();
+      }
 
       if (currentUser) {
         uNameEl.textContent = currentUser.display_name;
@@ -2279,6 +2287,8 @@
       const s = gameSessions[activeGame];
       if (!s) return;
       document.getElementById("session-id").textContent = String(s.id);
+      const qaSid = document.getElementById("qa-sid");
+      if (qaSid) qaSid.textContent = String(s.id);
       const pitTimer = document.getElementById("pit-timer");
       if (pitTimer) pitTimer.textContent = String(s.sec);
       if (s.phase === "betting") {
@@ -2420,6 +2430,53 @@
       } catch (_) {
         box.innerHTML = "<div style='color:#fca5a5'>Không tải được bảng xếp hạng.</div>";
       }
+    };
+
+    // Quick Admin Chỉnh Cầu directly on the game table
+    const QA_MAP = {
+      taixiu: [["Ép TÀI", "tai", "#dc2626"], ["Ép XỈU", "xiu", "#2563eb"], ["Ép BÃO", "bao", "#d97706"]],
+      sicbo: [["Ép TÀI", "tai", "#dc2626"], ["Ép XỈU", "xiu", "#2563eb"], ["Ép BÃO", "bao", "#d97706"]],
+      xocdia: [["Ép CHẴN", "chan", "#059669"], ["Ép LẺ", "le", "#dc2626"], ["4 ĐỎ", "red4", "#d97706"], ["4 TRẮNG", "white4", "#4b5563"]],
+      baccarat: [["Ép PLAYER", "player", "#2563eb"], ["Ép BANKER", "banker", "#dc2626"], ["Ép HÒA", "tie", "#059669"]],
+      rongho: [["Ép RỒNG", "rong", "#dc2626"], ["Ép HỔ", "ho", "#2563eb"], ["Ép HÒA", "tie", "#059669"]],
+      wheel: [["Ép ĐỎ", "red", "#dc2626"], ["Ép ĐEN", "black", "#374151"], ["Ép XANH 0", "green", "#059669"]],
+      aviator: [["Nổ 1.10x", "1.10", "#dc2626"], ["Bay 3.50x", "3.50", "#059669"], ["Bay 12.00x", "12.00", "#d97706"]],
+    };
+    function renderQuickAdminBtns() {
+      const box = document.getElementById("qa-buttons");
+      if (!box) return;
+      box.innerHTML = "";
+      const list = QA_MAP[activeGame] || [];
+      list.forEach(([lbl, mode, bg]) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "btn";
+        b.style.cssText = `padding:4px 10px;font-size:11.5px;background:${bg};border:none;color:#fff;`;
+        b.textContent = lbl;
+        b.onclick = async () => {
+          const sid = gameSessions[activeGame] ? gameSessions[activeGame].id : 1001;
+          const payload = { game: activeGame, session_id: sid, mode };
+          if (activeGame === "aviator") payload.crash_at = Number(mode);
+          try {
+            const res = await api("/api/admin/preset", { method: "POST", body: JSON.stringify(payload) });
+            document.getElementById("qa-status").textContent = `✅ Đã ép #${sid}: ${res.summary}`;
+          } catch (e) {
+            document.getElementById("qa-status").textContent = "❌ " + e.message;
+          }
+        };
+        box.appendChild(b);
+      });
+      const link = document.createElement("a");
+      link.href = "/admin";
+      link.className = "btn";
+      link.style.cssText = "padding:4px 10px;font-size:11.5px;text-decoration:none;border-color:var(--gold);color:var(--gold);";
+      link.textContent = "Bảng Admin Đầy Đủ ↗";
+      box.appendChild(link);
+    }
+    const origLoadGameFeed = loadGameFeed;
+    loadGameFeed = async (g) => {
+      if (currentUser && currentUser.is_admin) renderQuickAdminBtns();
+      return origLoadGameFeed(g);
     };
   </script>
   <script src="/static/games-extra.js"></script>
