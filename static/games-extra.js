@@ -86,23 +86,29 @@
     const bacVal = (c) => (c.rank === "A" ? 1 : ["10", "J", "Q", "K"].includes(c.rank) ? 0 : Number(c.rank));
     const handScore = (cards) => cards.reduce((s, c) => s + bacVal(c), 0) % 10;
 
-    function runBaccarat() {
+    async function runBaccarat() {
       if (busy) return;
       busy = true;
       const wager = bacBets.player + bacBets.banker + bacBets.tie;
-      const deck = createDeck();
-      const pCards = [deck.pop(), deck.pop()], bCards = [deck.pop(), deck.pop()];
-      let pScore = handScore(pCards), bScore = handScore(bCards);
-      if (pScore < 8 && bScore < 8) {
-        let pThird = null;
-        if (pScore <= 5) { pThird = deck.pop(); pCards.push(pThird); }
-        if (!pThird) { if (bScore <= 5) bCards.push(deck.pop()); }
-        else {
-          const tv = bacVal(pThird);
-          if (bScore <= 2 || (bScore === 3 && tv !== 8) || (bScore === 4 && tv >= 2 && tv <= 7) || (bScore === 5 && tv >= 4 && tv <= 7) || (bScore === 6 && (tv === 6 || tv === 7))) bCards.push(deck.pop());
+      let pCards, bCards, pScore, bScore;
+      try {
+        const live = await Hub.getLiveRound("baccarat");
+        ({ pCards, bCards, pScore, bScore } = live.outcome);
+      } catch (_) {
+        const deck = createDeck();
+        pCards = [deck.pop(), deck.pop()]; bCards = [deck.pop(), deck.pop()];
+        pScore = handScore(pCards); bScore = handScore(bCards);
+        if (pScore < 8 && bScore < 8) {
+          let pThird = null;
+          if (pScore <= 5) { pThird = deck.pop(); pCards.push(pThird); }
+          if (!pThird) { if (bScore <= 5) bCards.push(deck.pop()); }
+          else {
+            const tv = bacVal(pThird);
+            if (bScore <= 2 || (bScore === 3 && tv !== 8) || (bScore === 4 && tv >= 2 && tv <= 7) || (bScore === 5 && tv >= 4 && tv <= 7) || (bScore === 6 && (tv === 6 || tv === 7))) bCards.push(deck.pop());
+          }
         }
+        pScore = handScore(pCards); bScore = handScore(bCards);
       }
-      pScore = handScore(pCards); bScore = handScore(bCards);
       const usePeek = Hub.isPeekEnabled();
       document.getElementById("bac-p-cards").innerHTML = pCards.map((c) => cardHtml(c, usePeek)).join("");
       document.getElementById("bac-b-cards").innerHTML = bCards.map((c) => cardHtml(c, usePeek)).join("");
@@ -147,55 +153,146 @@
     };
   }
 
-  /* 2. LÁI MÁY BAY */
+  /* 2. LÁI MÁY BAY / SUN PHỤNG AVIATOR */
   function initAviator() {
     const root = document.getElementById("view-aviator");
     let state = "idle", betAmt = 5000, activeWager = 0, cashedOut = false, mult = 1.0, crashAt = 2.0, startTs = 0;
+    let avHistory = [1.82, 1.50, 6.24, 54.73, 1.64, 1.42, 1.04, 1.17];
+    let avJackpot = 33841494;
+    let totalFlyBet = 4540000, totalFlyWin = 11290000;
+
     root.innerHTML = `
       <section class="stage">
-        <div class="status-banner" id="av-status">Bấm vào bầu trời để đặt cược — Máy bay tự cất cánh khi hết 30s!</div>
-        <div class="av-canvas-wrap" id="av-stage" style="cursor:pointer;"><canvas id="av-canvas" width="840" height="220"></canvas><div class="av-mult" id="av-mult">1.00x</div></div>
-        <div class="actions"><button class="btn btn-emerald" id="av-action-btn" style="display:none;">Rút Tiền</button></div>
+        <div class="av-top-strip">
+          <div class="av-hist-pills" id="av-hist-pills"></div>
+          <span style="color:var(--gold);flex-shrink:0;">🔥 PHỤNG HOÀNG</span>
+        </div>
+        <div class="av-canvas-wrap" id="av-stage">
+          <div class="av-stats-mini">
+            <span>CƯỢC: <strong id="av-tot-bet" style="color:#fff">4.54M</strong></span>
+            <span>👁️ <strong id="av-players">35</strong></span>
+            <span>THẮNG: <strong id="av-tot-win" style="color:#4ade80">11.29M</strong></span>
+          </div>
+          <div class="av-jackpot-orb">
+            <div class="lbl">🔥 JACKPOT</div>
+            <div class="val" id="av-jp-val">33,841,494</div>
+          </div>
+          <canvas id="av-canvas" width="840" height="260"></canvas>
+          <div class="av-mult" id="av-mult">x1.00</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:6px;">
+          <button type="button" class="btn-hex-green" id="av-bet-btn">ĐẶT CƯỢC <span style="display:block;font-size:10px;font-weight:600;opacity:0.9;">Phiên Sau</span></button>
+          <button type="button" class="btn btn-gold" id="av-action-btn" style="display:none;padding:10px 28px;border-radius:999px;font-size:15px;">RÚT TIỀN</button>
+          <div style="font-size:12px;color:#fde68a;font-weight:700;" id="av-status">Rút tiền - trước khi phụng chết!</div>
+        </div>
       </section>
       <section class="controls">
         <div class="chips">${chipButtonsHtml("data-aval")}</div>
       </section>`;
 
     const canvas = document.getElementById("av-canvas"), ctx = canvas.getContext("2d");
-    const multEl = document.getElementById("av-mult"), statusEl = document.getElementById("av-status"), actionBtn = document.getElementById("av-action-btn");
+    const multEl = document.getElementById("av-mult"), statusEl = document.getElementById("av-status");
+    const actionBtn = document.getElementById("av-action-btn"), betBtn = document.getElementById("av-bet-btn");
     let queuedWager = 0;
+
+    function renderAvPills() {
+      document.getElementById("av-hist-pills").innerHTML = avHistory.slice(-9).reverse().map((v) => {
+        const cls = v >= 10 ? "av-pill-hi" : v >= 2 ? "av-pill-mid" : "av-pill-lo";
+        return `<span class="${cls}">x${v.toFixed(2)}</span>`;
+      }).join("");
+    }
+    renderAvPills();
+
+    setInterval(() => {
+      avJackpot += Math.floor(Math.random() * 4200);
+      const jEl = document.getElementById("av-jp-val");
+      if (jEl) jEl.textContent = Hub.fmt(avJackpot);
+      if (state === "flying") {
+        totalFlyWin += Math.floor(Math.random() * 140000);
+        const wEl = document.getElementById("av-tot-win");
+        if (wEl) wEl.textContent = (totalFlyWin / 1000000).toFixed(2) + "M";
+      }
+    }, 900);
+
     root.querySelectorAll("[data-aval]").forEach((btn) => {
       btn.onclick = () => { if (state === "flying") return; root.querySelectorAll("[data-aval]").forEach((b) => b.classList.remove("selected")); btn.classList.add("selected"); betAmt = btn.dataset.aval === "allin" ? "allin" : Number(btn.dataset.aval); };
     });
-    document.getElementById("av-stage").onclick = () => {
+
+    betBtn.onclick = () => {
       if (state === "flying") return;
       const w = betAmt === "allin" ? Hub.getBalance() : betAmt;
       if (w <= 0 || !Hub.spend(w)) { statusEl.textContent = "Không đủ xu!"; return; }
       queuedWager += w;
-      Hub.flyCoin(document.getElementById("av-stage"));
-      statusEl.textContent = `Đã đặt ${Hub.fmt(queuedWager)} xu — Chờ máy bay tự cất cánh!`;
+      Hub.flyCoin(betBtn);
+      statusEl.textContent = `Đã đặt ${Hub.fmt(queuedWager)} xu — Phụng chuẩn bị bay!`;
     };
 
     function drawFlight(progress, crashed) {
       const w = canvas.width, h = canvas.height;
       ctx.clearRect(0, 0, w, h);
-      const endX = Math.min(w - 50, 40 + progress * (w - 110)), endY = Math.max(36, h - 30 - Math.pow(progress, 1.35) * (h - 75));
-      ctx.beginPath(); ctx.moveTo(30, h - 24); ctx.quadraticCurveTo(endX * 0.55, h - 24, endX, endY);
-      ctx.strokeStyle = crashed ? "#ef4444" : "#f5b942"; ctx.lineWidth = 3.5; ctx.stroke();
-      ctx.lineTo(endX, h - 24); ctx.closePath();
-      ctx.fillStyle = crashed ? "rgba(239,68,68,0.12)" : "rgba(245,185,66,0.12)"; ctx.fill();
-      ctx.font = "26px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      ctx.fillText(crashed ? "💥" : "✈️", endX, endY - 4);
+
+      // Volcanic mountain silhouette at bottom
+      ctx.fillStyle = "rgba(18, 4, 6, 0.85)";
+      ctx.beginPath();
+      ctx.moveTo(0, h);
+      ctx.lineTo(0, h - 38);
+      ctx.lineTo(140, h - 62);
+      ctx.lineTo(310, h - 26);
+      ctx.lineTo(520, h - 55);
+      ctx.lineTo(710, h - 30);
+      ctx.lineTo(w, h - 68);
+      ctx.lineTo(w, h);
+      ctx.closePath();
+      ctx.fill();
+
+      const endX = Math.min(w - 90, 90 + progress * (w - 220));
+      const endY = Math.max(58, h - 56 - Math.pow(progress, 1.25) * (h - 130));
+
+      // Glowing fire trail
+      const grad = ctx.createLinearGradient(40, h - 40, endX, endY);
+      grad.addColorStop(0, "rgba(239, 68, 68, 0.08)");
+      grad.addColorStop(0.6, "rgba(249, 115, 22, 0.55)");
+      grad.addColorStop(1, "rgba(253, 224, 71, 0.95)");
+      ctx.beginPath();
+      ctx.moveTo(40, h - 42);
+      ctx.quadraticCurveTo(endX * 0.52, endY + 26, endX, endY);
+      ctx.strokeStyle = crashed ? "#ef4444" : grad;
+      ctx.lineWidth = 5;
+      ctx.stroke();
+
+      // Fire Phoenix
+      ctx.save();
+      ctx.shadowColor = crashed ? "#ef4444" : "#f97316";
+      ctx.shadowBlur = 24;
+      ctx.font = "44px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(crashed ? "💥" : "🐦‍🔥", endX, endY - 4);
+      ctx.restore();
     }
 
-    function launchFlight() {
+    async function launchFlight() {
       if (state === "flying") return;
       activeWager = queuedWager; queuedWager = 0; cashedOut = false; mult = 1.0;
-      const r = Math.random();
-      crashAt = r < 0.05 ? 1.0 : Math.max(1.05, Math.min(25, Math.floor((0.96 / (1 - r)) * 100) / 100));
-      state = "flying"; startTs = performance.now(); multEl.style.color = "var(--gold)";
-      if (activeWager > 0) { actionBtn.style.display = "inline-block"; actionBtn.disabled = false; actionBtn.textContent = "Rút Tiền"; }
-      statusEl.textContent = activeWager > 0 ? "Máy bay đang bay! Nhấn Rút Tiền trước khi nổ!" : "Chuyến bay tự động đang bay...";
+      totalFlyBet = 3200000 + Math.floor(Math.random() * 3500000);
+      totalFlyWin = Math.floor(totalFlyBet * 0.4);
+      document.getElementById("av-tot-bet").textContent = (totalFlyBet / 1000000).toFixed(2) + "M";
+      document.getElementById("av-players").textContent = String(24 + Math.floor(Math.random() * 28));
+      try {
+        const live = await Hub.getLiveRound("aviator");
+        crashAt = live.outcome.crashAt;
+      } catch (_) {
+        const r = Math.random();
+        crashAt = r < 0.05 ? 1.0 : Math.max(1.05, Math.min(25, Math.floor((0.96 / (1 - r)) * 100) / 100));
+      }
+      state = "flying"; startTs = performance.now(); multEl.style.color = "#a78bfa";
+      if (activeWager > 0) {
+        betBtn.style.display = "none";
+        actionBtn.style.display = "inline-block";
+        actionBtn.disabled = false;
+        actionBtn.textContent = "RÚT TIỀN";
+      }
+      statusEl.textContent = activeWager > 0 ? "Rút tiền - trước khi phụng chết!" : "Phụng đang bay — Đặt cược cho phiên sau!";
       tick();
     }
 
@@ -204,8 +301,8 @@
         cashedOut = true;
         const payout = Math.floor(activeWager * mult);
         Hub.win(payout);
-        Hub.recordRound("aviator", activeWager, payout, `Rút ở ${mult.toFixed(2)}x`, `${mult.toFixed(1)}x`, "win");
-        statusEl.innerHTML = `Rút thành công ở <strong style="color:var(--green)">${mult.toFixed(2)}x</strong> (+${Hub.fmt(payout - activeWager)} xu)!`;
+        Hub.recordRound("aviator", activeWager, payout, `Rút ở x${mult.toFixed(2)}`, `x${mult.toFixed(1)}`, "win");
+        statusEl.innerHTML = `Khoe thắng <strong style="color:#4ade80">x${mult.toFixed(2)}</strong> (+${Hub.fmt(payout - activeWager)} xu)!`;
         actionBtn.disabled = true; Hub.playBeep(960, 0.14);
       }
     };
@@ -215,20 +312,24 @@
       const elapsed = (performance.now() - startTs) / 1000;
       mult = Math.exp(0.16 * elapsed);
       if (mult >= crashAt) {
-        mult = crashAt; state = "crashed"; multEl.textContent = `${crashAt.toFixed(2)}x`; multEl.style.color = "var(--tai)";
+        mult = crashAt; state = "crashed"; multEl.textContent = `x${crashAt.toFixed(2)}`; multEl.style.color = "#ef4444";
         drawFlight(Math.min(1, elapsed / 12), true);
+        avHistory.push(crashAt);
+        renderAvPills();
         if (!cashedOut) {
-          Hub.recordRound("aviator", activeWager, 0, `Nổ ở ${crashAt.toFixed(2)}x`, `${crashAt.toFixed(1)}x`, "lose");
-          statusEl.textContent = `Máy bay nổ ở ${crashAt.toFixed(2)}x! Bấm bầu trời để đặt chuyến mới.`; Hub.playBeep(210, 0.16);
+          Hub.recordRound("aviator", activeWager, 0, `Phụng nổ ở x${crashAt.toFixed(2)}`, `x${crashAt.toFixed(1)}`, "lose");
+          statusEl.textContent = `Phụng chết ở x${crashAt.toFixed(2)}! Bấm ĐẶT CƯỢC cho phiên sau.`; Hub.playBeep(210, 0.16);
         }
-        actionBtn.style.display = "none"; return;
+        actionBtn.style.display = "none";
+        betBtn.style.display = "inline-block";
+        return;
       }
-      multEl.textContent = `${mult.toFixed(2)}x`;
-      if (!cashedOut && activeWager > 0) actionBtn.textContent = `Rút (${Hub.fmt(Math.floor(activeWager * mult))} xu)`;
+      multEl.textContent = `x${mult.toFixed(2)}`;
+      if (!cashedOut && activeWager > 0) actionBtn.textContent = `RÚT TIỀN (${Hub.fmt(Math.floor(activeWager * mult))} xu)`;
       drawFlight(Math.min(1, elapsed / 12), false);
       requestAnimationFrame(tick);
     }
-    drawFlight(0.05, false);
+    drawFlight(0.25, false);
     Hub.autoHandlers.aviator = { roll: launchFlight };
   }
 
@@ -340,7 +441,7 @@
       bcBets = {nai:0,bau:0,ga:0,ca:0,cua:0,tom:0}; syncBC();
     }
 
-    function runBC() {
+    async function runBC() {
       if (phase === "covered") { openBC(); return; }
       if (phase !== "betting") return;
       phase = "shaking";
@@ -348,7 +449,12 @@
       bowl.classList.add("shaking");
       document.querySelectorAll("#bc-dice .bc-die").forEach((d) => d.classList.add("spinning"));
       document.getElementById("bc-status").textContent = "Đang lắc Bầu Cua...";
-      pendingRes = [0,1,2].map(() => FACES[Math.floor(Math.random() * 6)]);
+      try {
+        const live = await Hub.getLiveRound("baucua");
+        pendingRes = live.outcome.faces.map((idx) => FACES[idx]);
+      } catch (_) {
+        pendingRes = [0,1,2].map(() => FACES[Math.floor(Math.random() * 6)]);
+      }
       setTimeout(() => {
         bowl.classList.remove("shaking");
         document.getElementById("bc-dice").innerHTML = pendingRes.map((f) => `<div class="bc-die">${f.icon}</div>`).join("");
@@ -398,11 +504,19 @@
       whBets[el.dataset.wh] += amt; Hub.playBeep(740, 0.04); syncWH();
     }));
     root.querySelectorAll("[data-wval]").forEach((btn) => (btn.onclick = () => { root.querySelectorAll("[data-wval]").forEach((b) => b.classList.remove("selected")); btn.classList.add("selected"); betAmt = btn.dataset.wval === "allin" ? "allin" : Number(btn.dataset.wval); }));
-    function runWheel() {
+    async function runWheel() {
       if (spinning) return;
       spinning = true;
       const wager = whBets.red + whBets.green + whBets.black;
-      const slot = Math.floor(Math.random() * 15), outcome = slot === 0 ? "green" : slot % 2 === 1 ? "red" : "black";
+      let slot, outcome;
+      try {
+        const live = await Hub.getLiveRound("wheel");
+        slot = live.outcome.slot;
+        outcome = live.outcome.outcome;
+      } catch (_) {
+        slot = Math.floor(Math.random() * 15);
+        outcome = slot === 0 ? "green" : slot % 2 === 1 ? "red" : "black";
+      }
       const segAngle = 360 / 15;
       angle += 1080 + (360 - (slot * segAngle + segAngle / 2));
       document.getElementById("wh-disc").style.transform = `rotate(${angle}deg)`;
@@ -474,13 +588,18 @@
       xdBets[k] += amt; Hub.playBeep(740, 0.04); syncXD();
     }));
 
-    function runXD() {
+    async function runXD() {
       if (phase === "covered") { openXD(); return; }
       if (phase !== "betting") return;
       phase = "shaking";
       if (Hub.isPeekEnabled()) lid.classList.remove("open");
       bowl.classList.add("shaking");
-      pendingCoins = [0, 1, 2, 3].map(() => (Math.random() < 0.5 ? 0 : 1));
+      try {
+        const live = await Hub.getLiveRound("xocdia");
+        pendingCoins = live.outcome.coins;
+      } catch (_) {
+        pendingCoins = [0, 1, 2, 3].map(() => (Math.random() < 0.5 ? 0 : 1));
+      }
       setTimeout(() => {
         bowl.classList.remove("shaking");
         document.getElementById("xd-coins").innerHTML = pendingCoins.map((c) => `<div class="xd-coin ${c ? "red" : "white"}"></div>`).join("");
@@ -563,11 +682,19 @@
     root.querySelectorAll("[data-rhv]").forEach((b) => (b.onclick = () => { root.querySelectorAll("[data-rhv]").forEach((x) => x.classList.remove("selected")); b.classList.add("selected"); betAmt = b.dataset.rhv === "allin" ? "allin" : Number(b.dataset.rhv); }));
     const val = (r) => (r === "A" ? 1 : r === "J" ? 11 : r === "Q" ? 12 : r === "K" ? 13 : Number(r));
 
-    function runRongHo() {
+    async function runRongHo() {
       if (busy) return;
       busy = true;
       const wager = rhBets.rong + rhBets.tie + rhBets.ho;
-      const deck = createDeck(), cR = deck.pop(), cH = deck.pop();
+      let cR, cH;
+      try {
+        const live = await Hub.getLiveRound("rongho");
+        cR = live.outcome.cR;
+        cH = live.outcome.cH;
+      } catch (_) {
+        const deck = createDeck();
+        cR = deck.pop(); cH = deck.pop();
+      }
       const usePeek = Hub.isPeekEnabled();
       document.getElementById("rh-r").innerHTML = cardHtml(cR, usePeek);
       document.getElementById("rh-h").innerHTML = cardHtml(cH, usePeek);
@@ -1145,8 +1272,139 @@
     leverEl.addEventListener("click", () => { if (leverStartY === null) pullAndSpin(); });
   }
 
+  /* 12. SICBO TÀI PHÚ */
+  function initSicbo() {
+    const root = document.getElementById("view-sicbo");
+    const PIP_MAP = { 1:[4], 2:[0,8], 3:[0,4,8], 4:[0,2,6,8], 5:[0,2,4,6,8], 6:[0,2,3,5,6,8] };
+    const SUM_ODDS = { 4:50, 5:18, 6:14, 7:12, 8:8, 9:6, 10:6, 11:6, 12:6, 13:8, 14:12, 15:14, 16:18, 17:50 };
+    let chip = 5000, phase = "betting", pending = [1, 3, 5];
+    let sbBets = { tai:0, xiu:0, chan:0, le:0, bao:0, doi:0 };
+    Object.keys(SUM_ODDS).forEach((s) => (sbBets["s" + s] = 0));
+
+    root.innerHTML = `
+      <section class="stage">
+        <div class="status-banner" id="sb-status">Sicbo Tài Phú — Chọn Tài/Xỉu, Bão (1:30), Đôi (1:8) hoặc Tổng Điểm (tới 1:50)!</div>
+        <div class="sun-pit" id="sb-bowl">
+          <div class="dice auto-spin" id="sb-d0"></div>
+          <div class="dice auto-spin" id="sb-d1"></div>
+          <div class="dice auto-spin" id="sb-d2"></div>
+          <div class="bowl-lid open" id="sb-lid"><span>KÉO ĐỂ NẶN BÁT</span></div>
+        </div>
+        <div class="result-readout" id="sb-result"></div>
+      </section>
+      <section class="board">
+        <div class="bet-card tai" data-sb="tai"><div class="bet-name">TÀI</div><div class="bet-rule">11 – 17, trừ Bão (1:1)</div><div class="bet-amount" id="sb-amt-tai">Cược: 0</div></div>
+        <div class="bet-card xiu" data-sb="xiu"><div class="bet-name">XỈU</div><div class="bet-rule">4 – 10, trừ Bão (1:1)</div><div class="bet-amount" id="sb-amt-xiu">Cược: 0</div></div>
+      </section>
+      <section class="sub-board" style="grid-template-columns:repeat(4,1fr);">
+        <div class="sub-card" data-sb="chan"><div class="sub-title">CHẴN</div><div class="sub-odd">1:1</div><div class="sub-amt" id="sb-amt-chan">0</div></div>
+        <div class="sub-card" data-sb="le"><div class="sub-title">LẺ</div><div class="sub-odd">1:1</div><div class="sub-amt" id="sb-amt-le">0</div></div>
+        <div class="sub-card" data-sb="doi"><div class="sub-title" style="color:var(--gold)">ĐÔI ĐỒNG NHẤT</div><div class="sub-odd">1:8</div><div class="sub-amt" id="sb-amt-doi">0</div></div>
+        <div class="sub-card" data-sb="bao"><div class="sub-title" style="color:var(--tai)">BÃO BẤT KỲ</div><div class="sub-odd">1:30</div><div class="sub-amt" id="sb-amt-bao">0</div></div>
+      </section>
+      <section class="sub-board" style="grid-template-columns:repeat(7,1fr);gap:6px;">
+        ${Object.entries(SUM_ODDS).map(([s, odd]) => `<div class="sub-card" style="padding:7px 4px;" data-sb="s${s}"><div class="sub-title">${s}</div><div class="sub-odd">1:${odd}</div><div class="sub-amt" id="sb-amt-s${s}" style="font-size:11px;">0</div></div>`).join("")}
+      </section>
+      <section class="controls">
+        <div class="chips">${chipButtonsHtml("data-sbv")}</div>
+      </section>`;
+
+    const lid = document.getElementById("sb-lid"), bowl = document.getElementById("sb-bowl");
+    const renderSBDice = (idx, val) => {
+      Hub.render3DDice(document.getElementById(`sb-d${idx}`), val);
+    };
+    [0, 1, 2].forEach((i) => {
+      renderSBDice(i, pending[i]);
+      const d = document.getElementById(`sb-d${i}`);
+      d.style.cursor = "pointer";
+      d.onclick = () => { d.classList.add("spinning"); Hub.playBeep(700, 0.04); setTimeout(() => d.classList.remove("spinning"), 460); };
+    });
+
+    const syncSB = () => Object.keys(sbBets).forEach((k) => {
+      const el = document.getElementById(`sb-amt-${k}`);
+      if (el) el.textContent = (k === "tai" || k === "xiu" ? "Cược: " : "") + Hub.fmt(sbBets[k]);
+      root.querySelector(`[data-sb="${k}"]`).classList.toggle("active", sbBets[k] > 0);
+    });
+    root.querySelectorAll("[data-sbv]").forEach((b) => (b.onclick = () => {
+      root.querySelectorAll("[data-sbv]").forEach((x) => x.classList.remove("selected"));
+      b.classList.add("selected");
+      chip = b.dataset.sbv === "allin" ? "allin" : Number(b.dataset.sbv);
+    }));
+    root.querySelectorAll("[data-sb]").forEach((c) => (c.onclick = () => {
+      if (phase !== "betting") return;
+      const k = c.dataset.sb;
+      if ((k === "tai" && sbBets.xiu > 0) || (k === "xiu" && sbBets.tai > 0) || (k === "chan" && sbBets.le > 0) || (k === "le" && sbBets.chan > 0)) {
+        document.getElementById("sb-status").textContent = "Không thể đặt 2 cửa đối lập!"; return;
+      }
+      const amt = chip === "allin" ? Hub.getBalance() : chip;
+      if (amt <= 0 || !Hub.spend(amt)) return;
+      sbBets[k] += amt; Hub.flyCoin(c); Hub.playBeep(740, 0.04); syncSB();
+    }));
+
+    function openSB() {
+      if (phase !== "covered") return;
+      lid.classList.remove("dragging"); lid.style.transform = ""; lid.classList.add("open");
+      phase = "betting";
+      const [d1, d2, d3] = pending;
+      const sum = d1 + d2 + d3;
+      const isTriple = d1 === d2 && d2 === d3;
+      const hasDouble = !isTriple && (d1 === d2 || d2 === d3 || d1 === d3);
+      const isTai = !isTriple && sum >= 11;
+      const isXiu = !isTriple && sum <= 10;
+      const isEven = sum % 2 === 0;
+
+      let payout = 0;
+      if (isTai) payout += sbBets.tai * 2;
+      if (isXiu) payout += sbBets.xiu * 2;
+      if (!isTriple && isEven) payout += sbBets.chan * 2;
+      if (!isTriple && !isEven) payout += sbBets.le * 2;
+      if (isTriple) payout += sbBets.bao * 31;
+      if (hasDouble) payout += sbBets.doi * 9;
+      if (SUM_ODDS[sum]) payout += (sbBets["s" + sum] || 0) * (SUM_ODDS[sum] + 1);
+
+      const total = Object.values(sbBets).reduce((a, b) => a + b, 0);
+      Hub.win(payout);
+      const net = payout - total;
+      const label = isTriple ? `BÃO (${d1}-${d2}-${d3})` : `${sum} điểm (${isTai ? "Tài" : "Xỉu"})`;
+      Hub.recordRound("sicbo", total, payout, `${d1}-${d2}-${d3} (${label})`, String(sum), isTriple ? "B" : isTai ? "T" : "X");
+      document.getElementById("sb-result").innerHTML = `${d1} + ${d2} + ${d3} = <strong>${label}</strong> · ${net >= 0 ? `<span style="color:var(--green)">+${Hub.fmt(net)} xu</span>` : `<span style="color:var(--tai)">${Hub.fmt(net)} xu</span>`}`;
+      document.getElementById("sb-status").textContent = "Đặt cược cho phiên Sicbo mới!";
+      Hub.playBeep(net > 0 ? 940 : 260, 0.14);
+      Object.keys(sbBets).forEach((k) => (sbBets[k] = 0)); syncSB();
+    }
+
+    async function runSB() {
+      if (phase === "covered") { openSB(); return; }
+      if (phase !== "betting") return;
+      phase = "shaking";
+      if (Hub.isPeekEnabled()) lid.classList.remove("open");
+      bowl.classList.add("shaking");
+      [0, 1, 2].forEach((i) => document.getElementById(`sb-d${i}`).classList.add("spinning"));
+      try {
+        const live = await Hub.getLiveRound("sicbo");
+        pending = live.outcome.dice;
+      } catch (_) {
+        pending = [1, 2, 3].map(() => Math.floor(Math.random() * 6) + 1);
+      }
+      setTimeout(() => {
+        bowl.classList.remove("shaking");
+        [0, 1, 2].forEach((i) => { document.getElementById(`sb-d${i}`).classList.remove("spinning"); renderSBDice(i, pending[i]); });
+        phase = "covered"; lid.style.transform = "";
+        if (!Hub.isPeekEnabled()) openSB();
+        else document.getElementById("sb-status").textContent = "Kéo nắp bát để nặn Sicbo!";
+      }, 900);
+    }
+
+    Hub.autoHandlers.sicbo = { roll: runSB, reveal: openSB };
+    let drag = null;
+    lid.addEventListener("pointerdown", (e) => { if (phase !== "covered") return; drag = { x: e.clientX, y: e.clientY }; lid.classList.add("dragging"); lid.setPointerCapture(e.pointerId); });
+    lid.addEventListener("pointermove", (e) => { if (!drag || phase !== "covered") return; const dx = e.clientX - drag.x, dy = e.clientY - drag.y; lid.style.transform = `translate(${dx}px,${dy}px)`; if (Math.hypot(dx, dy) >= 110) { drag = null; openSB(); } });
+    const stop = () => { if (!drag) return; drag = null; lid.classList.remove("dragging"); if (phase === "covered") lid.style.transform = ""; };
+    lid.addEventListener("pointerup", stop); lid.addEventListener("pointercancel", stop);
+  }
+
   initBaccarat(); initAviator(); initPoker(); initBauCua(); initWheel();
-  initXocDia(); initRongHo(); initBlackjack(); initMines(); initCarrier(); initSlots();
+  initXocDia(); initRongHo(); initBlackjack(); initMines(); initCarrier(); initSlots(); initSicbo();
 
   // Ensure Poker, Blackjack, Mines, Carrier also auto-run live sessions when idle
   Hub.autoHandlers.poker = {

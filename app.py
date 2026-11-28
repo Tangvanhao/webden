@@ -1,6 +1,8 @@
+import json
+import random
 import secrets
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse
@@ -61,16 +63,17 @@ class TransactionReq(BaseModel):
 
 
 class RecordGameReq(BaseModel):
-    game: str = Field(..., pattern="^(taixiu|baccarat|aviator|poker|baucua|wheel|xocdia|rongho|blackjack|mines|carrier|slots)$")
+    game: str = Field(..., pattern="^(taixiu|baccarat|aviator|poker|baucua|wheel|xocdia|rongho|blackjack|mines|carrier|slots|sicbo)$")
     wager: int = Field(..., ge=0)
     payout: int = Field(..., ge=0)
     summary: str = Field(..., max_length=160)
     badge: str = Field(..., max_length=16)
     kind: str = Field(..., max_length=16)
+    session_id: Optional[int] = None
 
 
 class CommentReq(BaseModel):
-    game: str = Field(..., pattern="^(taixiu|baccarat|aviator|poker|baucua|wheel|xocdia|rongho|blackjack|mines|carrier|slots)$")
+    game: str = Field(..., pattern="^(taixiu|baccarat|aviator|poker|baucua|wheel|xocdia|rongho|blackjack|mines|carrier|slots|sicbo)$")
     text: str = Field(..., min_length=1, max_length=240)
     is_system: bool = False
 
@@ -179,11 +182,102 @@ async def record_game(req: RecordGameReq, authorization: Optional[str] = Header(
             u_row = conn.execute("SELECT * FROM users WHERE id = ?", (user["id"],)).fetchone()
             updated_user = user_to_dict(u_row)
 
-        conn.execute(
-            "INSERT INTO game_history (game, user_id, summary, badge, kind) VALUES (?, ?, ?, ?, ?)",
-            (req.game, user["id"] if user else None, req.summary, req.badge, req.kind),
-        )
+        s_key = f"{req.game}:{req.session_id}" if req.session_id is not None else None
+        if s_key:
+            conn.execute(
+                "INSERT OR IGNORE INTO game_history (game, user_id, session_key, summary, badge, kind) VALUES (?, ?, ?, ?, ?, ?)",
+                (req.game, user["id"] if user else None, s_key, req.summary, req.badge, req.kind),
+            )
+        else:
+            conn.execute(
+                "INSERT INTO game_history (game, user_id, summary, badge, kind) VALUES (?, ?, ?, ?, ?)",
+                (req.game, user["id"] if user else None, req.summary, req.badge, req.kind),
+            )
         return {"user": updated_user}
+
+
+def _generate_seeded_outcome(game: str, session_id: int) -> Dict[str, Any]:
+    rng = random.Random(f"luxury-hub:{game}:{session_id}")
+    if game in ("taixiu", "sicbo"):
+        dice = [rng.randint(1, 6) for _ in range(3)]
+        s = sum(dice)
+        is_triple = dice[0] == dice[1] == dice[2]
+        kind = "B" if is_triple else ("T" if s >= 11 else "X")
+        lbl = f"BÃO ({dice[0]}-{dice[1]}-{dice[2]})" if is_triple else (f"TÀI ({s})" if s >= 11 else f"XỈU ({s})")
+        return {"outcome": {"dice": dice}, "summary": f"{dice[0]}-{dice[1]}-{dice[2]} ({lbl})", "badge": str(s), "kind": kind}
+    if game == "xocdia":
+        coins = [rng.choice([0, 1]) for _ in range(4)]
+        reds = sum(coins)
+        even = reds % 2 == 0
+        return {"outcome": {"coins": coins}, "summary": f"{reds} Đỏ {4-reds} Trắng", "badge": "C" if even else "L", "kind": "chan" if even else "le"}
+    if game == "baucua":
+        faces = [rng.randint(0, 5) for _ in range(3)]
+        names = ["Nai", "Bầu", "Gà", "Cá", "Cua", "Tôm"]
+        icons = ["🦌", "🍐", "🐓", "🐟", "🦀", "🦐"]
+        return {"outcome": {"faces": faces}, "summary": "-".join(names[i] for i in faces), "badge": "".join(icons[i] for i in faces), "kind": "win"}
+    if game == "wheel":
+        slot = rng.randint(0, 14)
+        out = "green" if slot == 0 else ("red" if slot % 2 == 1 else "black")
+        badge = "0" if out == "green" else ("Đ" if out == "red" else "X")
+        return {"outcome": {"slot": slot, "outcome": out}, "summary": f"Về ô {out}", "badge": badge, "kind": out}
+    if game == "aviator":
+        r = rng.random()
+        crash = 1.0 if r < 0.05 else max(1.05, min(25.0, round(0.96 / (1 - r), 2)))
+        return {"outcome": {"crashAt": crash}, "summary": f"Nổ ở {crash:.2f}x", "badge": f"{crash:.1f}x", "kind": "win" if crash >= 2 else "lose"}
+    if game in ("baccarat", "rongho"):
+        suits = ["♠", "♥", "♦", "♣"]
+        ranks = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"]
+        deck = [{"suit": s, "rank": r, "red": s in ("♥", "♦")} for s in suits for r in ranks]
+        rng.shuffle(deck)
+        if game == "rongho":
+            cR, cH = deck.pop(), deck.pop()
+            val = lambda rk: 1 if rk == "A" else (11 if rk == "J" else (12 if rk == "Q" else (13 if rk == "K" else int(rk))))
+            vR, vH = val(cR["rank"]), val(cH["rank"])
+            win_side = "rong" if vR > vH else ("ho" if vH > vR else "tie")
+            badge = "R" if win_side == "rong" else ("H" if win_side == "ho" else "Hòa")
+            return {"outcome": {"cR": cR, "cH": cH, "winSide": win_side}, "summary": f"{cR['rank']} vs {cH['rank']}", "badge": badge, "kind": win_side}
+        bval = lambda c: 1 if c["rank"] == "A" else (0 if c["rank"] in ("10", "J", "Q", "K") else int(c["rank"]))
+        hscore = lambda cs: sum(bval(c) for c in cs) % 10
+        pC, bC = [deck.pop(), deck.pop()], [deck.pop(), deck.pop()]
+        ps, bs = hscore(pC), hscore(bC)
+        if ps < 8 and bs < 8:
+            p3 = None
+            if ps <= 5:
+                p3 = deck.pop(); pC.append(p3)
+            if p3 is None:
+                if bs <= 5: bC.append(deck.pop())
+            else:
+                tv = bval(p3)
+                if bs <= 2 or (bs == 3 and tv != 8) or (bs == 4 and 2 <= tv <= 7) or (bs == 5 and 4 <= tv <= 7) or (bs == 6 and tv in (6, 7)):
+                    bC.append(deck.pop())
+        ps, bs = hscore(pC), hscore(bC)
+        win_side = "player" if ps > bs else ("banker" if bs > ps else "tie")
+        badge = "P" if win_side == "player" else ("B" if win_side == "banker" else "H")
+        return {"outcome": {"pCards": pC, "bCards": bC, "pScore": ps, "bScore": bs, "winner": win_side}, "summary": f"{win_side.upper()} ({ps} vs {bs})", "badge": badge, "kind": win_side}
+    return {"outcome": {}, "summary": "OK", "badge": "OK", "kind": "win"}
+
+
+@app.get("/api/live/round/{game}/{session_id}")
+async def get_live_round(game: str, session_id: int):
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT outcome_json, summary, badge, kind FROM global_rounds WHERE game = ? AND session_id = ?",
+            (game, session_id),
+        ).fetchone()
+        if row:
+            return {
+                "session_id": session_id,
+                "outcome": json.loads(row["outcome_json"]),
+                "summary": row["summary"],
+                "badge": row["badge"],
+                "kind": row["kind"],
+            }
+        gen = _generate_seeded_outcome(game, session_id)
+        conn.execute(
+            "INSERT OR IGNORE INTO global_rounds (game, session_id, outcome_json, summary, badge, kind) VALUES (?, ?, ?, ?, ?, ?)",
+            (game, session_id, json.dumps(gen["outcome"]), gen["summary"], gen["badge"], gen["kind"]),
+        )
+        return {"session_id": session_id, **gen}
 
 
 @app.get("/api/game/history/{game}")

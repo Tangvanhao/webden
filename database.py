@@ -70,10 +70,22 @@ def init_db() -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 game TEXT NOT NULL,
                 user_id INTEGER,
+                session_key TEXT UNIQUE,
                 summary TEXT NOT NULL,
                 badge TEXT NOT NULL,
                 kind TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS global_rounds (
+                game TEXT NOT NULL,
+                session_id INTEGER NOT NULL,
+                outcome_json TEXT NOT NULL,
+                summary TEXT NOT NULL,
+                badge TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (game, session_id)
             );
 
             CREATE TABLE IF NOT EXISTS comments (
@@ -86,6 +98,12 @@ def init_db() -> None:
             );
             """
         )
+
+        # Ensure session_key column exists if migrating from older DB
+        cols = [r["name"] for r in conn.execute("PRAGMA table_info(game_history)").fetchall()]
+        if "session_key" not in cols:
+            conn.execute("ALTER TABLE game_history ADD COLUMN session_key TEXT")
+            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_gh_session_key ON game_history(session_key)")
 
         # Seed default demo account if not exists
         cur = conn.execute("SELECT id FROM users WHERE username = ?", ("demo",))
