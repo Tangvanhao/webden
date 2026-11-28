@@ -234,7 +234,7 @@ def _generate_seeded_outcome(game: str, session_id: int) -> Dict[str, Any]:
         return {"outcome": {"slot": slot, "outcome": out}, "summary": f"Về ô {out}", "badge": badge, "kind": out}
     if game == "aviator":
         r = rng.random()
-        crash = 1.0 if r < 0.05 else max(1.05, min(25.0, round(0.96 / (1 - r), 2)))
+        crash = 1.0 if r < 0.05 else max(1.05, round(0.96 / max(1e-6, 1.0 - r), 2))
         return {"outcome": {"crashAt": crash}, "summary": f"Nổ ở {crash:.2f}x", "badge": f"{crash:.1f}x", "kind": "win" if crash >= 2 else "lose"}
     if game in ("baccarat", "rongho"):
         suits = ["♠", "♥", "♦", "♣"]
@@ -443,7 +443,7 @@ def _build_admin_outcome(game: str, mode: str, dice=None, crash_at=None, faces=N
         return {"outcome": {"slot": slot, "outcome": out}, "summary": f"Về ô {out}", "badge": badge, "kind": out}
 
     if game == "aviator":
-        c_val = max(1.0, min(100.0, round(float(crash_at or 2.0), 2)))
+        c_val = max(1.0, round(float(crash_at or 2.0), 2))
         return {"outcome": {"crashAt": c_val}, "summary": f"Nổ ở {c_val:.2f}x", "badge": f"{c_val:.1f}x", "kind": "win" if c_val >= 2 else "lose"}
 
     if game == "baucua":

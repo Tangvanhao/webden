@@ -283,7 +283,7 @@
         crashAt = live.outcome.crashAt;
       } catch (_) {
         const r = Math.random();
-        crashAt = r < 0.05 ? 1.0 : Math.max(1.05, Math.min(25, Math.floor((0.96 / (1 - r)) * 100) / 100));
+        crashAt = r < 0.05 ? 1.0 : Math.max(1.05, Math.floor((0.96 / Math.max(1e-6, 1 - r)) * 100) / 100);
       }
       state = "flying"; startTs = performance.now(); multEl.style.color = "#a78bfa";
       if (activeWager > 0) {
